@@ -125,24 +125,21 @@ create_admin_user() {
     print_status "Ensuring admin user exists with correct password..."
     
     # Use PHP to create proper password hash and insert user
-    su -s /bin/bash www-data -c "php -r \"
-    \$db = new PDO('sqlite:$DB_FILE');
-    \$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
-    // Check if admin user exists
-    \$stmt = \$db->prepare('SELECT COUNT(*) FROM users WHERE username = ?');
-    \$stmt->execute(['admin']);
-    
-    if (\$stmt->fetchColumn() == 0) {
-        // Create admin user with hashed password
-        \$hashedPassword = password_hash('admin', PASSWORD_DEFAULT);
-        \$db->prepare('INSERT INTO users (username, password) VALUES (?, ?)')
-            ->execute(['admin', \$hashedPassword]);
-        echo 'Admin user created with username: admin, password: admin\n';
-    } else {
-        echo 'Admin user already exists\n';
-    }
-    \""
+    su -s /bin/bash www-data -c "php << 'EOF'
+<?php
+\$db = new PDO('sqlite:$DB_FILE');
+\$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+// Delete any existing admin user first
+\$db->exec('DELETE FROM users WHERE username = \"admin\"');
+
+// Create admin user with hashed password
+\$hashedPassword = password_hash('admin', PASSWORD_DEFAULT);
+\$db->prepare('INSERT INTO users (username, password) VALUES (?, ?)')
+    ->execute(['admin', \$hashedPassword]);
+echo 'Admin user created with username: admin, password: admin';
+?>
+EOF"
     
     if [ $? -eq 0 ]; then
         print_success "Admin user setup complete"

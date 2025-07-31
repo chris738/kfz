@@ -33,6 +33,7 @@ $vehicles = $stmt->fetchAll();
                 <td><?= $v['baujahr'] ?></td>
                 <td><?= $v['status'] ?></td>
                 <td>
+                    <a href="vehicle_detail.php?id=<?= $v['id'] ?>" class="btn btn-sm btn-info">Details</a>
                     <a href="edit_vehicle.php?id=<?= $v['id'] ?>" class="btn btn-sm btn-warning">Bearbeiten</a>
                     <a href="vehicles.php?delete=<?= $v['id'] ?>" class="btn btn-sm btn-danger"
                        onclick="return confirm('Wirklich löschen?');">Löschen</a>

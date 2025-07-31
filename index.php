@@ -43,12 +43,56 @@ $maintenance_types = [
     'hu' => 'HU',
     'other' => 'Sonstiges'
 ];
+
+// Data for charts
+// Monthly fuel costs (last 6 months)
+$monthly_fuel_costs = $db->query("
+    SELECT 
+        strftime('%Y-%m', date_recorded) as month,
+        SUM(total_cost) as total_cost
+    FROM fuel_records 
+    WHERE date_recorded >= date('now', '-6 months')
+    GROUP BY strftime('%Y-%m', date_recorded)
+    ORDER BY month ASC
+")->fetchAll();
+
+// Fuel costs per vehicle
+$fuel_costs_by_vehicle = $db->query("
+    SELECT 
+        v.marke || ' ' || v.modell as vehicle_name,
+        COALESCE(SUM(f.total_cost), 0) as total_cost
+    FROM vehicles v
+    LEFT JOIN fuel_records f ON v.id = f.vehicle_id
+    GROUP BY v.id, v.marke, v.modell
+    ORDER BY total_cost DESC
+")->fetchAll();
+
+// Monthly maintenance costs (last 6 months)
+$monthly_maintenance_costs = $db->query("
+    SELECT 
+        strftime('%Y-%m', date_performed) as month,
+        SUM(cost) as total_cost
+    FROM maintenance_records 
+    WHERE date_performed >= date('now', '-6 months')
+    GROUP BY strftime('%Y-%m', date_performed)
+    ORDER BY month ASC
+")->fetchAll();
+
+// Vehicle status distribution
+$vehicle_status_distribution = $db->query("
+    SELECT 
+        status,
+        COUNT(*) as count
+    FROM vehicles
+    GROUP BY status
+")->fetchAll();
 ?>
 <!DOCTYPE html>
 <html>
 <head>
     <title>KFZ Verwaltung Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -108,6 +152,45 @@ $maintenance_types = [
         </div>
     </div>
 
+    <!-- Charts Section -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Spritkosten Verlauf (letzte 6 Monate)</div>
+                <div class="card-body">
+                    <canvas id="fuelCostsChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Fahrzeugstatus Verteilung</div>
+                <div class="card-body">
+                    <canvas id="vehicleStatusChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Spritkosten pro Fahrzeug</div>
+                <div class="card-body">
+                    <canvas id="fuelCostsByVehicleChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Wartungskosten Verlauf (letzte 6 Monate)</div>
+                <div class="card-body">
+                    <canvas id="maintenanceCostsChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Letzte Aktivitäten -->
     <div class="row">
         <div class="col-md-6">
@@ -158,5 +241,166 @@ $maintenance_types = [
             </div>
         </div>
     </div>
+
+    <script>
+    // Chart configuration
+    Chart.defaults.font.family = 'Arial, sans-serif';
+    Chart.defaults.responsive = true;
+    Chart.defaults.maintainAspectRatio = false;
+
+    // 1. Fuel Costs Chart (Monthly trend)
+    const fuelCostsCtx = document.getElementById('fuelCostsChart').getContext('2d');
+    const fuelCostsData = <?= json_encode($monthly_fuel_costs) ?>;
+    
+    const fuelCostsChart = new Chart(fuelCostsCtx, {
+        type: 'line',
+        data: {
+            labels: fuelCostsData.map(item => {
+                const date = new Date(item.month + '-01');
+                return date.toLocaleDateString('de-DE', { year: 'numeric', month: 'short' });
+            }),
+            datasets: [{
+                label: 'Spritkosten (€)',
+                data: fuelCostsData.map(item => parseFloat(item.total_cost)),
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString('de-DE') + ' €';
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // 2. Vehicle Status Chart (Pie chart)
+    const vehicleStatusCtx = document.getElementById('vehicleStatusChart').getContext('2d');
+    const vehicleStatusData = <?= json_encode($vehicle_status_distribution) ?>;
+    
+    const vehicleStatusChart = new Chart(vehicleStatusCtx, {
+        type: 'doughnut',
+        data: {
+            labels: vehicleStatusData.map(item => {
+                switch(item.status) {
+                    case 'verfügbar': return 'Verfügbar';
+                    case 'in Benutzung': return 'In Benutzung';
+                    case 'wartung': return 'Wartung';
+                    default: return item.status;
+                }
+            }),
+            datasets: [{
+                data: vehicleStatusData.map(item => parseInt(item.count)),
+                backgroundColor: [
+                    '#28a745', // Green for available
+                    '#ffc107', // Yellow for in use
+                    '#dc3545'  // Red for maintenance
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // 3. Fuel Costs by Vehicle Chart (Bar chart)
+    const fuelCostsByVehicleCtx = document.getElementById('fuelCostsByVehicleChart').getContext('2d');
+    const fuelCostsByVehicleData = <?= json_encode($fuel_costs_by_vehicle) ?>;
+    
+    const fuelCostsByVehicleChart = new Chart(fuelCostsByVehicleCtx, {
+        type: 'bar',
+        data: {
+            labels: fuelCostsByVehicleData.map(item => item.vehicle_name),
+            datasets: [{
+                label: 'Spritkosten (€)',
+                data: fuelCostsByVehicleData.map(item => parseFloat(item.total_cost)),
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString('de-DE') + ' €';
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // 4. Maintenance Costs Chart (Monthly trend)
+    const maintenanceCostsCtx = document.getElementById('maintenanceCostsChart').getContext('2d');
+    const maintenanceCostsData = <?= json_encode($monthly_maintenance_costs) ?>;
+    
+    const maintenanceCostsChart = new Chart(maintenanceCostsCtx, {
+        type: 'bar',
+        data: {
+            labels: maintenanceCostsData.map(item => {
+                const date = new Date(item.month + '-01');
+                return date.toLocaleDateString('de-DE', { year: 'numeric', month: 'short' });
+            }),
+            datasets: [{
+                label: 'Wartungskosten (€)',
+                data: maintenanceCostsData.map(item => parseFloat(item.total_cost)),
+                backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString('de-DE') + ' €';
+                        }
+                    }
+                }
+            }
+        }
+    });
+    </script>
 </body>
 </html>

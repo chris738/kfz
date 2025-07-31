@@ -1,0 +1,12 @@
+# SQLite databases (should be created by the application)
+data/*.db
+data/*.sqlite
+
+# Temporary files
+/tmp/*
+
+# Docker build files
+.dockerignore
+
+# Log files
+*.log

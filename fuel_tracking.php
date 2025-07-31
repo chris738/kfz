@@ -35,6 +35,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_fuel'])) {
     exit();
 }
 
+// Handle fuel record edit submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_fuel'])) {
+    $db->prepare("UPDATE fuel_records SET mileage = ?, date_recorded = ?, fuel_price_per_liter = ?, fuel_amount_liters = ?, notes = ? WHERE id = ? AND vehicle_id = ?")
+        ->execute([
+            $_POST['mileage'],
+            $_POST['date_recorded'],
+            $_POST['fuel_price_per_liter'],
+            $_POST['fuel_amount_liters'],
+            $_POST['notes'] ?? '',
+            $_POST['fuel_id'],
+            $vehicle_id
+        ]);
+    header("Location: fuel_tracking.php?id=" . $vehicle_id);
+    exit();
+}
+
+// Handle fuel record deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_fuel'])) {
+    $db->prepare("DELETE FROM fuel_records WHERE id = ? AND vehicle_id = ?")
+        ->execute([$_POST['fuel_id'], $vehicle_id]);
+    header("Location: fuel_tracking.php?id=" . $vehicle_id);
+    exit();
+}
+
 // Get fuel records for this vehicle
 $stmt = $db->prepare("SELECT * FROM fuel_records WHERE vehicle_id = ? ORDER BY date_recorded DESC");
 $stmt->execute([$vehicle_id]);
@@ -225,6 +249,7 @@ if (!empty($consumption_stats)) {
                                         <th>Menge (L)</th>
                                         <th>Gesamtkosten</th>
                                         <th>Notizen</th>
+                                        <th>Aktionen</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -236,6 +261,14 @@ if (!empty($consumption_stats)) {
                                         <td><?= number_format($record['fuel_amount_liters'], 2, ',', '.') ?> L</td>
                                         <td><?= number_format($record['total_cost'], 2, ',', '.') ?> €</td>
                                         <td><?= htmlspecialchars($record['notes'] ?? '') ?></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary me-1" onclick="editFuelRecord(<?= $record['id'] ?>, '<?= $record['date_recorded'] ?>', <?= $record['mileage'] ?>, <?= $record['fuel_price_per_liter'] ?>, <?= $record['fuel_amount_liters'] ?>, '<?= htmlspecialchars($record['notes'] ?? '', ENT_QUOTES) ?>')">
+                                                Bearbeiten
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteFuelRecord(<?= $record['id'] ?>)">
+                                                Löschen
+                                            </button>
+                                        </td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -246,5 +279,97 @@ if (!empty($consumption_stats)) {
             </div>
         </div>
     </div>
+
+    <!-- Edit Fuel Record Modal -->
+    <div class="modal" id="editFuelModal" tabindex="-1" style="display: none; background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editFuelModalLabel">Tankvorgang bearbeiten</h5>
+                    <button type="button" class="btn-close" onclick="closeEditModal()" aria-label="Close">×</button>
+                </div>
+                <form method="post">
+                    <div class="modal-body">
+                        <input type="hidden" name="fuel_id" id="edit_fuel_id">
+                        <div class="mb-3">
+                            <label for="edit_mileage" class="form-label">Kilometerstand</label>
+                            <input type="number" name="mileage" id="edit_mileage" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_date_recorded" class="form-label">Datum</label>
+                            <input type="date" name="date_recorded" id="edit_date_recorded" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_fuel_price_per_liter" class="form-label">Preis pro Liter (€)</label>
+                            <input type="number" step="0.001" name="fuel_price_per_liter" id="edit_fuel_price_per_liter" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_fuel_amount_liters" class="form-label">Spritmenge (L)</label>
+                            <input type="number" step="0.01" name="fuel_amount_liters" id="edit_fuel_amount_liters" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_notes" class="form-label">Notizen (optional)</label>
+                            <input type="text" name="notes" id="edit_notes" class="form-control">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Abbrechen</button>
+                        <button type="submit" name="edit_fuel" class="btn btn-primary">Speichern</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS for modals -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+    function editFuelRecord(id, date, mileage, pricePerLiter, amount, notes) {
+        document.getElementById('edit_fuel_id').value = id;
+        document.getElementById('edit_date_recorded').value = date;
+        document.getElementById('edit_mileage').value = mileage;
+        document.getElementById('edit_fuel_price_per_liter').value = pricePerLiter;
+        document.getElementById('edit_fuel_amount_liters').value = amount;
+        document.getElementById('edit_notes').value = notes;
+        
+        document.getElementById('editFuelModal').style.display = 'block';
+    }
+
+    function closeEditModal() {
+        document.getElementById('editFuelModal').style.display = 'none';
+    }
+
+    // Close modal when clicking outside of it
+    window.onclick = function(event) {
+        var modal = document.getElementById('editFuelModal');
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    function deleteFuelRecord(id) {
+        if (confirm('Möchten Sie diesen Tankvorgang wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.style.display = 'none';
+            
+            var fuelIdInput = document.createElement('input');
+            fuelIdInput.type = 'hidden';
+            fuelIdInput.name = 'fuel_id';
+            fuelIdInput.value = id;
+            
+            var deleteInput = document.createElement('input');
+            deleteInput.type = 'hidden';
+            deleteInput.name = 'delete_fuel';
+            deleteInput.value = '1';
+            
+            form.appendChild(fuelIdInput);
+            form.appendChild(deleteInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+    </script>
 </body>
 </html>

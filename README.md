@@ -46,6 +46,27 @@ echo 'Default user created: admin/admin\n';
 "
 ```
 
+### Automatisches Deployment
+
+Für automatische Updates der Anwendung steht ein Deployment-Skript zur Verfügung:
+
+```bash
+# Normale Aktualisierung (behält Daten bei)
+./deploy.sh
+
+# Mit Datenbank-Reset (entfernt alle Daten)
+./deploy.sh --reset-db
+
+# Hilfe anzeigen
+./deploy.sh --help
+```
+
+Das Skript führt automatisch folgende Schritte aus:
+1. Aktueller Code wird aus dem git Repository geholt
+2. Docker Container werden gestoppt und neu gestartet  
+3. Datenbank wird neu eingerichtet (optional mit Reset)
+4. Standard-Benutzer wird erstellt
+
 ### Persistente Daten
 
 Die SQLite-Datenbank wird im Volume `kfz_data` gespeichert, so dass die Daten bei Container-Neustarts erhalten bleiben.

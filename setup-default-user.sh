@@ -23,4 +23,10 @@ if (\$stmt->fetchColumn() == 0) {
 }
 "
 
+# Fix database file permissions to ensure www-data can write to it
+echo "Fixing database file permissions..."
+docker exec kfz-webapp chown -R www-data:www-data /var/www/html/data/
+docker exec kfz-webapp chmod -R 664 /var/www/html/data/*.db 2>/dev/null || true
+docker exec kfz-webapp chmod 775 /var/www/html/data/
+
 echo "Setup complete!"

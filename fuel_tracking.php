@@ -22,13 +22,14 @@ if (!$vehicle) {
 
 // Handle fuel record form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_fuel'])) {
-    $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, notes) VALUES (?, ?, ?, ?, ?, ?)")
+    $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, fuel_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?)")
         ->execute([
             $vehicle_id,
             $_POST['mileage'],
             $_POST['date_recorded'],
             $_POST['fuel_price_per_liter'],
             $_POST['fuel_amount_liters'],
+            $_POST['fuel_type'] ?? 'Benzin',
             $_POST['notes'] ?? ''
         ]);
     header("Location: fuel_tracking.php?id=" . $vehicle_id);
@@ -108,13 +109,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     
                     // Insert into database
                     try {
-                        $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, notes) VALUES (?, ?, ?, ?, ?, ?)")
+                        $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, fuel_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?)")
                             ->execute([
                                 $vehicle_id,
                                 (int)$kilometer,
                                 $formatted_date,
                                 (float)$preiprol,
                                 (float)$liter,
+                                'Benzin', // Default fuel type for CSV import
                                 "CSV Import - ID: $csv_id"
                             ]);
                         $imported_count++;
@@ -264,30 +266,45 @@ if (!empty($consumption_stats)) {
             <div class="card">
                 <div class="card-header">Tankvorgang hinzufügen</div>
                 <div class="card-body">
-                    <form method="post" class="row g-3">
-                        <div class="col-md-2">
-                            <label for="mileage" class="form-label">Kilometerstand</label>
-                            <input type="number" name="mileage" id="mileage" class="form-control" required>
+                    <form method="post">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label for="mileage" class="form-label">Kilometerstand</label>
+                                <input type="number" name="mileage" id="mileage" class="form-control" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="date_recorded" class="form-label">Datum</label>
+                                <input type="date" name="date_recorded" id="date_recorded" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="fuel_price_per_liter" class="form-label">Preis pro Liter (€)</label>
+                                <input type="number" step="0.001" name="fuel_price_per_liter" id="fuel_price_per_liter" class="form-control" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="fuel_amount_liters" class="form-label">Spritmenge (L)</label>
+                                <input type="number" step="0.01" name="fuel_amount_liters" id="fuel_amount_liters" class="form-control" required>
+                            </div>
                         </div>
-                        <div class="col-md-2">
-                            <label for="date_recorded" class="form-label">Datum</label>
-                            <input type="date" name="date_recorded" id="date_recorded" class="form-control" value="<?= date('Y-m-d') ?>" required>
-                        </div>
-                        <div class="col-md-2">
-                            <label for="fuel_price_per_liter" class="form-label">Preis pro Liter (€)</label>
-                            <input type="number" step="0.001" name="fuel_price_per_liter" id="fuel_price_per_liter" class="form-control" required>
-                        </div>
-                        <div class="col-md-2">
-                            <label for="fuel_amount_liters" class="form-label">Spritmenge (L)</label>
-                            <input type="number" step="0.01" name="fuel_amount_liters" id="fuel_amount_liters" class="form-control" required>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="notes" class="form-label">Notizen (optional)</label>
-                            <input type="text" name="notes" id="notes" class="form-control">
-                        </div>
-                        <div class="col-md-1">
-                            <label class="form-label">&nbsp;</label>
-                            <button type="submit" name="add_fuel" class="btn btn-primary w-100">Hinzufügen</button>
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label for="fuel_type" class="form-label">Kraftstoffart</label>
+                                <select name="fuel_type" id="fuel_type" class="form-control">
+                                    <option value="Benzin">Benzin</option>
+                                    <option value="Diesel">Diesel</option>
+                                    <option value="LPG">LPG (Autogas)</option>
+                                    <option value="CNG">CNG (Erdgas)</option>
+                                    <option value="Elektro">Elektro</option>
+                                    <option value="Hybrid">Hybrid</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="notes" class="form-label">Notizen (optional)</label>
+                                <input type="text" name="notes" id="notes" class="form-control">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="submit" name="add_fuel" class="btn btn-primary w-100">Hinzufügen</button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -366,6 +383,232 @@ if (!empty($consumption_stats)) {
     </div>
     <?php endif; ?>
 
+    <!-- Enhanced Analytics Charts -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Kraftstoffpreise Entwicklung</div>
+                <div class="card-body">
+                    <canvas id="fuelPriceChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Verbrauchstrends</div>
+                <div class="card-body">
+                    <canvas id="consumptionChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <?php if (!empty($fuel_records)): ?>
+    <!-- Fuel Type Distribution -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Kraftstoffarten Verteilung</div>
+                <div class="card-body">
+                    <canvas id="fuelTypeChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Monatliche Kosten</div>
+                <div class="card-body">
+                    <canvas id="monthlyCostChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script>
+        <?php if (!empty($fuel_records)): ?>
+        // Fuel Price Development Chart
+        const fuelPriceCtx = document.getElementById('fuelPriceChart').getContext('2d');
+        
+        <?php
+        // Prepare data for fuel price chart
+        $price_data = [];
+        $price_labels = [];
+        foreach (array_reverse($fuel_records) as $record) {
+            $price_data[] = round($record['fuel_price_per_liter'], 3);
+            $price_labels[] = date('d.m.Y', strtotime($record['date_recorded']));
+        }
+        
+        // Prepare consumption data
+        $consumption_chart_data = [];
+        $consumption_labels = [];
+        foreach ($consumption_stats as $stat) {
+            $consumption_chart_data[] = round($stat['consumption'], 2);
+            $consumption_labels[] = date('d.m', strtotime($stat['to_date']));
+        }
+        
+        // Prepare fuel type distribution
+        $fuel_type_counts = [];
+        foreach ($fuel_records as $record) {
+            $type = $record['fuel_type'] ?? 'Benzin';
+            $fuel_type_counts[$type] = ($fuel_type_counts[$type] ?? 0) + 1;
+        }
+        
+        // Prepare monthly costs
+        $monthly_costs = [];
+        $monthly_labels = [];
+        
+        for ($i = 5; $i >= 0; $i--) {
+            $month_start = date('Y-m-01', strtotime("-$i months"));
+            $month_end = date('Y-m-t', strtotime("-$i months"));
+            
+            $monthly_cost = 0;
+            foreach ($fuel_records as $record) {
+                if ($record['date_recorded'] >= $month_start && $record['date_recorded'] <= $month_end) {
+                    $monthly_cost += $record['total_cost'];
+                }
+            }
+            
+            $monthly_costs[] = round($monthly_cost, 2);
+            $monthly_labels[] = date('M Y', strtotime($month_start));
+        }
+        ?>
+        
+        const fuelPriceChart = new Chart(fuelPriceCtx, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode(array_slice($price_labels, -20)) ?>, // Last 20 entries
+                datasets: [{
+                    label: 'Preis pro Liter (€)',
+                    data: <?= json_encode(array_slice($price_data, -20)) ?>,
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Preis (€/L)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                }
+            }
+        });
+
+        // Consumption Trend Chart
+        const consumptionCtx = document.getElementById('consumptionChart').getContext('2d');
+        const consumptionChart = new Chart(consumptionCtx, {
+            type: 'bar',
+            data: {
+                labels: <?= json_encode($consumption_labels) ?>,
+                datasets: [{
+                    label: 'Verbrauch (L/100km)',
+                    data: <?= json_encode($consumption_chart_data) ?>,
+                    backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Verbrauch (L/100km)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                }
+            }
+        });
+
+        // Fuel Type Distribution Chart
+        const fuelTypeCtx = document.getElementById('fuelTypeChart').getContext('2d');
+        const fuelTypeChart = new Chart(fuelTypeCtx, {
+            type: 'pie',
+            data: {
+                labels: <?= json_encode(array_keys($fuel_type_counts)) ?>,
+                datasets: [{
+                    data: <?= json_encode(array_values($fuel_type_counts)) ?>,
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.8)',
+                        'rgba(54, 162, 235, 0.8)',
+                        'rgba(255, 205, 86, 0.8)',
+                        'rgba(75, 192, 192, 0.8)',
+                        'rgba(153, 102, 255, 0.8)',
+                        'rgba(255, 159, 64, 0.8)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        // Monthly Cost Chart
+        const monthlyCostCtx = document.getElementById('monthlyCostChart').getContext('2d');
+        const monthlyCostChart = new Chart(monthlyCostCtx, {
+            type: 'bar',
+            data: {
+                labels: <?= json_encode($monthly_labels) ?>,
+                datasets: [{
+                    label: 'Kosten (€)',
+                    data: <?= json_encode($monthly_costs) ?>,
+                    backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Kosten (€)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                }
+            }
+        });
+        <?php else: ?>
+        // Show placeholder for empty data
+        document.getElementById('fuelPriceChart').style.display = 'none';
+        document.getElementById('consumptionChart').style.display = 'none';
+        document.getElementById('fuelTypeChart').style.display = 'none';
+        document.getElementById('monthlyCostChart').style.display = 'none';
+        <?php endif; ?>
+    </script>
+
     <!-- Fuel Records History -->
     <div class="row">
         <div class="col-12">
@@ -381,6 +624,7 @@ if (!empty($consumption_stats)) {
                                     <tr>
                                         <th>Datum</th>
                                         <th>Kilometerstand</th>
+                                        <th>Kraftstoffart</th>
                                         <th>Preis/L</th>
                                         <th>Menge (L)</th>
                                         <th>Gesamtkosten</th>
@@ -392,6 +636,7 @@ if (!empty($consumption_stats)) {
                                     <tr>
                                         <td><?= date('d.m.Y', strtotime($record['date_recorded'])) ?></td>
                                         <td><?= number_format($record['mileage'], 0, ',', '.') ?> km</td>
+                                        <td><?= htmlspecialchars($record['fuel_type'] ?? 'Benzin') ?></td>
                                         <td><?= number_format($record['fuel_price_per_liter'], 3, ',', '.') ?> €</td>
                                         <td><?= number_format($record['fuel_amount_liters'], 2, ',', '.') ?> L</td>
                                         <td><?= number_format($record['total_cost'], 2, ',', '.') ?> €</td>

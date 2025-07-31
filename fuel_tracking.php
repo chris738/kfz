@@ -288,7 +288,7 @@ if (!empty($consumption_stats)) {
                         <div class="row g-3">
                             <div class="col-md-3">
                                 <label for="fuel_type" class="form-label">Kraftstoffart</label>
-                                <select name="fuel_type" id="fuel_type" class="form-control">
+                                <select name="fuel_type" id="fuel_type" class="form-select">
                                     <option value="Benzin">Benzin</option>
                                     <option value="Diesel">Diesel</option>
                                     <option value="LPG">LPG (Autogas)</option>
@@ -425,12 +425,25 @@ if (!empty($consumption_stats)) {
     </div>
     <?php endif; ?>
 
-    <!-- Chart.js Library -->
+    <!-- Chart.js Library with fallback -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script>
-        <?php if (!empty($fuel_records)): ?>
-        // Fuel Price Development Chart
-        const fuelPriceCtx = document.getElementById('fuelPriceChart').getContext('2d');
+        // Check if Chart.js loaded successfully
+        if (typeof Chart === 'undefined') {
+            console.warn('Chart.js failed to load. Charts will not be displayed.');
+            // Hide chart containers if Chart.js is not available
+            const chartContainers = ['monthlyFuelChart', 'consumptionChart', 'fuelTypeChart', 'monthlyCostChart'];
+            chartContainers.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.parentElement.innerHTML = '<p class="text-muted text-center">Diagramm nicht verfügbar (Chart.js Bibliothek konnte nicht geladen werden)</p>';
+                }
+            });
+        } else {
+            // Chart.js is available, proceed with chart creation
+            <?php if (!empty($fuel_records)): ?>
+            // Fuel Price Development Chart
+            const fuelPriceCtx = document.getElementById('fuelPriceChart').getContext('2d');
         
         <?php
         // Prepare data for fuel price chart
@@ -602,11 +615,15 @@ if (!empty($consumption_stats)) {
         });
         <?php else: ?>
         // Show placeholder for empty data
-        document.getElementById('fuelPriceChart').style.display = 'none';
-        document.getElementById('consumptionChart').style.display = 'none';
-        document.getElementById('fuelTypeChart').style.display = 'none';
-        document.getElementById('monthlyCostChart').style.display = 'none';
+        const chartContainers = ['fuelPriceChart', 'consumptionChart', 'fuelTypeChart', 'monthlyCostChart'];
+        chartContainers.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.parentElement.innerHTML = '<p class="text-muted text-center">Keine Daten für Diagramm verfügbar</p>';
+            }
+        });
         <?php endif; ?>
+        } // End of Chart.js available check
     </script>
 
     <!-- Fuel Records History -->

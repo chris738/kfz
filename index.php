@@ -190,11 +190,24 @@ $maintenance_types = [
         </div>
     </div>
 
-    <!-- Chart.js Library -->
+    <!-- Chart.js Library with fallback -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script>
-        // Monthly Fuel Costs Chart
-        const monthlyFuelCtx = document.getElementById('monthlyFuelChart').getContext('2d');
+        // Check if Chart.js loaded successfully
+        if (typeof Chart === 'undefined') {
+            console.warn('Chart.js failed to load. Dashboard charts will not be displayed.');
+            // Hide chart containers if Chart.js is not available
+            const chartContainers = ['monthlyFuelChart', 'costDistributionChart', 'consumptionTrendChart'];
+            chartContainers.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.parentElement.innerHTML = '<p class="text-muted text-center">Diagramm nicht verfügbar (Chart.js Bibliothek konnte nicht geladen werden)</p>';
+                }
+            });
+        } else {
+            // Chart.js is available, proceed with chart creation
+            // Monthly Fuel Costs Chart
+            const monthlyFuelCtx = document.getElementById('monthlyFuelChart').getContext('2d');
         
         // Get monthly fuel data from PHP
         <?php
@@ -353,6 +366,7 @@ $maintenance_types = [
                 }
             }
         });
+        } // End of Chart.js available check
     </script>
 </body>
 </html>

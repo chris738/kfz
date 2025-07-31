@@ -1,6 +1,14 @@
 <?php
 // SQLite DB-Verbindung
-$db = new PDO('sqlite:kfzverwaltung.db');
+$dbPath = __DIR__ . '/data/kfzverwaltung.db';
+$dataDir = dirname($dbPath);
+
+// Ensure data directory exists
+if (!is_dir($dataDir)) {
+    mkdir($dataDir, 0755, true);
+}
+
+$db = new PDO('sqlite:' . $dbPath);
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 // Tabelle erzeugen, falls nicht vorhanden

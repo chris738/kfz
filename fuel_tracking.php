@@ -35,6 +35,130 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_fuel'])) {
     exit();
 }
 
+// Handle CSV import
+$import_message = '';
+$import_error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
+    if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === UPLOAD_ERR_OK) {
+        $csv_file = $_FILES['csv_file']['tmp_name'];
+        
+        try {
+            $imported_count = 0;
+            $error_count = 0;
+            $errors = [];
+            
+            if (($handle = fopen($csv_file, 'r')) !== FALSE) {
+                $row_num = 0;
+                while (($data = fgetcsv($handle, 1000, ';')) !== FALSE) {
+                    $row_num++;
+                    
+                    // Skip header row if it looks like a header
+                    if ($row_num === 1 && (stripos($data[0], 'id') !== false || !is_numeric($data[0]))) {
+                        continue;
+                    }
+                    
+                    // Validate CSV format: expecting id;datum;kilometer;liter;preiprol
+                    if (count($data) < 5) {
+                        $errors[] = "Zeile $row_num: Nicht genügend Spalten (erwartet: 5, gefunden: " . count($data) . ")";
+                        $error_count++;
+                        continue;
+                    }
+                    
+                    $csv_id = trim($data[0]);
+                    $datum = trim($data[1]);
+                    $kilometer = trim($data[2]);
+                    $liter = trim($data[3]);
+                    $preiprol = trim($data[4]);
+                    
+                    // Validate data
+                    if (!is_numeric($kilometer) || $kilometer < 0) {
+                        $errors[] = "Zeile $row_num: Ungültiger Kilometerstand: $kilometer";
+                        $error_count++;
+                        continue;
+                    }
+                    
+                    if (!is_numeric($liter) || $liter <= 0) {
+                        $errors[] = "Zeile $row_num: Ungültige Spritmenge: $liter";
+                        $error_count++;
+                        continue;
+                    }
+                    
+                    if (!is_numeric($preiprol) || $preiprol <= 0) {
+                        $errors[] = "Zeile $row_num: Ungültiger Preis pro Liter: $preiprol";
+                        $error_count++;
+                        continue;
+                    }
+                    
+                    // Validate and convert date
+                    $date_obj = DateTime::createFromFormat('Y-m-d', $datum);
+                    if (!$date_obj) {
+                        $date_obj = DateTime::createFromFormat('d.m.Y', $datum);
+                    }
+                    if (!$date_obj) {
+                        $date_obj = DateTime::createFromFormat('d/m/Y', $datum);
+                    }
+                    
+                    if (!$date_obj) {
+                        $errors[] = "Zeile $row_num: Ungültiges Datum: $datum (Format: YYYY-MM-DD oder DD.MM.YYYY)";
+                        $error_count++;
+                        continue;
+                    }
+                    
+                    $formatted_date = $date_obj->format('Y-m-d');
+                    
+                    // Insert into database
+                    try {
+                        $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, notes) VALUES (?, ?, ?, ?, ?, ?)")
+                            ->execute([
+                                $vehicle_id,
+                                (int)$kilometer,
+                                $formatted_date,
+                                (float)$preiprol,
+                                (float)$liter,
+                                "CSV Import - ID: $csv_id"
+                            ]);
+                        $imported_count++;
+                    } catch (PDOException $e) {
+                        $errors[] = "Zeile $row_num: Datenbankfehler: " . $e->getMessage();
+                        $error_count++;
+                    }
+                }
+                fclose($handle);
+            }
+            
+            if ($imported_count > 0) {
+                $import_message = "$imported_count Datensätze erfolgreich importiert.";
+            }
+            if ($error_count > 0) {
+                $import_error = "$error_count Fehler beim Import:<br>" . implode('<br>', array_slice($errors, 0, 10));
+                if (count($errors) > 10) {
+                    $import_error .= '<br>... und ' . (count($errors) - 10) . ' weitere Fehler.';
+                }
+            }
+            
+        } catch (Exception $e) {
+            $import_error = "Fehler beim Verarbeiten der CSV-Datei: " . $e->getMessage();
+        }
+    } else {
+        $import_error = "Fehler beim Hochladen der Datei.";
+    }
+    
+    // Redirect to avoid resubmission
+    $url_params = "id=$vehicle_id";
+    if ($import_message) $url_params .= "&import_success=" . urlencode($import_message);
+    if ($import_error) $url_params .= "&import_error=" . urlencode($import_error);
+    header("Location: fuel_tracking.php?$url_params");
+    exit();
+}
+
+// Display import messages from redirect
+if (isset($_GET['import_success'])) {
+    $import_message = $_GET['import_success'];
+}
+if (isset($_GET['import_error'])) {
+    $import_error = $_GET['import_error'];
+}
+
 // Get fuel records for this vehicle
 $stmt = $db->prepare("SELECT * FROM fuel_records WHERE vehicle_id = ? ORDER BY date_recorded DESC");
 $stmt->execute([$vehicle_id]);
@@ -164,6 +288,42 @@ if (!empty($consumption_stats)) {
                         <div class="col-md-1">
                             <label class="form-label">&nbsp;</label>
                             <button type="submit" name="add_fuel" class="btn btn-primary w-100">Hinzufügen</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSV Import -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">CSV Import</div>
+                <div class="card-body">
+                    <?php if ($import_message): ?>
+                        <div class="alert alert-success" role="alert">
+                            <?= htmlspecialchars($import_message) ?>
+                        </div>
+                    <?php endif; ?>
+                    <?php if ($import_error): ?>
+                        <div class="alert alert-danger" role="alert">
+                            <?= $import_error ?>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <form method="post" enctype="multipart/form-data" class="row g-3">
+                        <div class="col-md-8">
+                            <label for="csv_file" class="form-label">CSV-Datei auswählen</label>
+                            <input type="file" name="csv_file" id="csv_file" class="form-control" accept=".csv" required>
+                            <div class="form-text">
+                                Format: <code>id;datum;kilometer;liter;preiprol</code><br>
+                                Datum-Formate: YYYY-MM-DD oder DD.MM.YYYY<br>
+                                Beispiel: <code>1;2024-01-15;15000;45.5;1.65</code>
+                            </div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" name="import_csv" class="btn btn-secondary w-100">CSV importieren</button>
                         </div>
                     </form>
                 </div>

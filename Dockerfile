@@ -16,7 +16,9 @@ COPY . /var/www/html/
 
 # Copy and set up entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
+COPY init-database.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/init-database.sh
 
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www/html \

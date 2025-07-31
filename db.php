@@ -2,6 +2,7 @@
 // SQLite DB-Verbindung
 $dbPath = __DIR__ . '/data/kfzverwaltung.db';
 $dataDir = dirname($dbPath);
+$sqlInitFile = __DIR__ . '/init.sql';
 
 /**
  * Ensure directory exists and is writable with robust error handling
@@ -45,6 +46,40 @@ function ensureDirectoryWritable($dir) {
 }
 
 /**
+ * Initialize database with SQL file if needed
+ */
+function initializeDatabaseFromSQL($db, $sqlFile) {
+    try {
+        if (!file_exists($sqlFile)) {
+            error_log("KFZ Database: SQL init file not found: $sqlFile");
+            return false;
+        }
+        
+        // Check if database is already initialized by checking for vehicles table
+        $result = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='vehicles'")->fetch();
+        if ($result) {
+            // Database already initialized
+            return true;
+        }
+        
+        // Read and execute SQL file
+        $sql = file_get_contents($sqlFile);
+        if ($sql === false) {
+            throw new Exception("Failed to read SQL init file: $sqlFile");
+        }
+        
+        // Execute SQL statements
+        $db->exec($sql);
+        
+        error_log("KFZ Database: Successfully initialized from SQL file");
+        return true;
+        
+    } catch (Exception $e) {
+        error_log("KFZ Database SQL Init Error: " . $e->getMessage());
+        throw $e;
+    }
+}
+/**
  * Ensure database file has correct permissions
  */
 function ensureDatabaseWritable($dbPath) {
@@ -65,14 +100,14 @@ function ensureDatabaseWritable($dbPath) {
                 @chgrp($dbPath, 'www-data');
             }
             
-            // Try to fix file permissions
+            // Try to fix file permissions - use 664 for better security
             @chmod($dbPath, 0664);
             
             clearstatcache();
             usleep(100000); // Wait 100ms before retry
         }
         
-        // If still not writable, try more aggressive permissions
+        // If still not writable, try more permissive permissions as fallback
         if (!is_writable($dbPath)) {
             @chmod($dbPath, 0666); // More permissive permissions as fallback
             clearstatcache();
@@ -116,6 +151,7 @@ try {
     $db->exec('PRAGMA synchronous=NORMAL');  // Balance between safety and performance
     $db->exec('PRAGMA temp_store=MEMORY');  // Use memory for temporary tables
     $db->exec('PRAGMA mmap_size=268435456'); // Use memory-mapped I/O (256MB)
+    $db->exec('PRAGMA foreign_keys=ON');    // Enable foreign key support
     
 } catch (PDOException $e) {
     error_log("KFZ Database Connection Error: " . $e->getMessage());
@@ -125,19 +161,6 @@ try {
 // Ensure database file has correct permissions after creation
 ensureDatabaseWritable($dbPath);
 
-// Tabelle erzeugen, falls nicht vorhanden
-$db->exec("CREATE TABLE IF NOT EXISTS vehicles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    marke TEXT,
-    modell TEXT,
-    kennzeichen TEXT,
-    baujahr INTEGER,
-    status TEXT
-)");
-
-$db->exec("CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT,
-    password TEXT
-)");
+// Initialize database schema from SQL file
+initializeDatabaseFromSQL($db, $sqlInitFile);
 ?>

@@ -1,15 +1,14 @@
 #!/bin/bash
 set -e
 
-# Ensure data directory exists and has correct permissions
-mkdir -p /var/www/html/data
-chown -R www-data:www-data /var/www/html/data
-chmod 775 /var/www/html/data
+echo "KFZ Application: Starting initialization..."
 
-# Fix database file permissions if it exists
-if [ -f /var/www/html/data/kfzverwaltung.db ]; then
-    chown www-data:www-data /var/www/html/data/kfzverwaltung.db
-    chmod 664 /var/www/html/data/kfzverwaltung.db
+# Run database initialization script
+echo "Running database initialization..."
+if /usr/local/bin/init-database.sh; then
+    echo "Database initialization completed successfully"
+else
+    echo "Database initialization failed, but continuing..."
 fi
 
 # Execute the original command

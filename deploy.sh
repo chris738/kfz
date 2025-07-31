@@ -86,9 +86,17 @@ else
     print_warning "No containers were running or failed to stop"
 fi
 
-# Step 3: Handle database reset if requested
+# Step 3: Remove any existing containers with the same name
+print_status "Step 3: Removing any existing containers with conflicting names..."
+if docker rm -f kfz-webapp 2>/dev/null; then
+    print_success "Existing container 'kfz-webapp' removed successfully"
+else
+    print_status "No existing container 'kfz-webapp' found to remove"
+fi
+
+# Step 4: Handle database reset if requested
 if [ "$RESET_DB" = true ]; then
-    print_status "Step 3a: Resetting database (removing existing data)..."
+    print_status "Step 4a: Resetting database (removing existing data)..."
     if docker volume rm kfz_kfz_data 2>/dev/null; then
         print_success "Database volume removed successfully"
     else
@@ -96,8 +104,8 @@ if [ "$RESET_DB" = true ]; then
     fi
 fi
 
-# Step 4: Rebuild and restart containers
-print_status "Step 4: Rebuilding and starting Docker containers..."
+# Step 5: Rebuild and restart containers
+print_status "Step 5: Rebuilding and starting Docker containers..."
 if docker compose up -d --build; then
     print_success "Containers built and started successfully"
 else
@@ -105,12 +113,12 @@ else
     exit 1
 fi
 
-# Step 5: Wait for application to be ready
-print_status "Step 5: Waiting for application to be ready..."
+# Step 6: Wait for application to be ready
+print_status "Step 6: Waiting for application to be ready..."
 sleep 10
 
-# Step 6: Setup database
-print_status "Step 6: Setting up database and default user..."
+# Step 7: Setup database
+print_status "Step 7: Setting up database and default user..."
 if ./setup-default-user.sh; then
     print_success "Database setup completed successfully"
 else
@@ -118,8 +126,8 @@ else
     exit 1
 fi
 
-# Step 7: Verify deployment
-print_status "Step 7: Verifying deployment..."
+# Step 8: Verify deployment
+print_status "Step 8: Verifying deployment..."
 if docker ps | grep -q kfz-webapp; then
     print_success "Application is running successfully"
     print_status "Application URL: http://localhost:8080"

@@ -88,7 +88,8 @@ fi
 
 # Step 3: Remove any existing containers with the same name
 print_status "Step 3: Removing any existing containers with conflicting names..."
-if docker rm -f kfz-webapp 2>/dev/null; then
+if docker ps -a --format "{{.Names}}" | grep -q "^kfz-webapp$"; then
+    docker rm -f kfz-webapp >/dev/null 2>&1
     print_success "Existing container 'kfz-webapp' removed successfully"
 else
     print_status "No existing container 'kfz-webapp' found to remove"

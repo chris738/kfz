@@ -14,6 +14,10 @@ RUN a2enmod rewrite
 # Copy application files
 COPY . /var/www/html/
 
+# Copy and set up entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
@@ -26,5 +30,6 @@ RUN mkdir -p /var/www/html/data \
 # Expose port 80
 EXPOSE 80
 
-# Start Apache
+# Use custom entrypoint and start Apache
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["apache2-foreground"]

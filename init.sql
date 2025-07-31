@@ -54,6 +54,52 @@ END;
 INSERT OR IGNORE INTO users (username, password) 
 VALUES ('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'); -- password: admin
 
+-- Create mileage tracking table for Issue #3
+CREATE TABLE IF NOT EXISTS mileage_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL,
+    mileage INTEGER NOT NULL CHECK(mileage >= 0),
+    date_recorded DATE NOT NULL,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+);
+
+-- Create fuel cost tracking table for Issue #4  
+CREATE TABLE IF NOT EXISTS fuel_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL,
+    mileage INTEGER NOT NULL CHECK(mileage >= 0),
+    date_recorded DATE NOT NULL,
+    fuel_price_per_liter DECIMAL(5,3) NOT NULL CHECK(fuel_price_per_liter > 0),
+    fuel_amount_liters DECIMAL(6,2) NOT NULL CHECK(fuel_amount_liters > 0),
+    total_cost DECIMAL(8,2) GENERATED ALWAYS AS (fuel_price_per_liter * fuel_amount_liters) STORED,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+);
+
+-- Create maintenance records table for Issue #5
+CREATE TABLE IF NOT EXISTS maintenance_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL,
+    maintenance_type TEXT NOT NULL CHECK(maintenance_type IN ('kleine_wartung', 'grosse_wartung', 'tuev', 'hu', 'other')),
+    date_performed DATE NOT NULL,
+    mileage INTEGER CHECK(mileage >= 0),
+    cost DECIMAL(8,2) NOT NULL CHECK(cost >= 0),
+    description TEXT,
+    next_maintenance_km INTEGER CHECK(next_maintenance_km >= 0),
+    next_maintenance_date DATE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+);
+
+-- Create indexes for better performance on new tables
+CREATE INDEX IF NOT EXISTS idx_mileage_vehicle_date ON mileage_records(vehicle_id, date_recorded);
+CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_records(vehicle_id, date_recorded);
+CREATE INDEX IF NOT EXISTS idx_maintenance_vehicle_date ON maintenance_records(vehicle_id, date_performed);
+CREATE INDEX IF NOT EXISTS idx_maintenance_next_date ON maintenance_records(next_maintenance_date);
+
 -- Insert sample vehicles for testing (only if table is empty)
 INSERT OR IGNORE INTO vehicles (marke, modell, kennzeichen, baujahr, status) VALUES
 ('BMW', '320i', 'MU-TEST-001', 2020, 'verfügbar'),

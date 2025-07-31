@@ -1,0 +1,15 @@
+services:
+  kfz-web:
+    build: .
+    ports:
+      - "8080:80"
+    volumes:
+      - kfz_data:/var/www/html/data
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html
+    restart: unless-stopped
+    container_name: kfz-webapp
+
+volumes:
+  kfz_data:
+    driver: local

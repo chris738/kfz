@@ -202,8 +202,18 @@ foreach ($fuel_records as $record) {
     $total_fuel += $record['fuel_amount_liters'];
 }
 
-if (!empty($consumption_stats)) {
-    $total_km = end($fuel_records)['mileage'] - $fuel_records[count($fuel_records)-1]['mileage'];
+// Calculate overall average consumption if we have at least 2 fuel records
+if (count($fuel_records) >= 2) {
+    // Sort fuel records by mileage to get the correct range
+    $sorted_by_mileage = $fuel_records;
+    usort($sorted_by_mileage, function($a, $b) {
+        return $a['mileage'] - $b['mileage'];
+    });
+    
+    $min_mileage = $sorted_by_mileage[0]['mileage'];
+    $max_mileage = $sorted_by_mileage[count($sorted_by_mileage) - 1]['mileage'];
+    $total_km = $max_mileage - $min_mileage;
+    
     if ($total_km > 0) {
         $avg_consumption = ($total_fuel / $total_km) * 100;
     }

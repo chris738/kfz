@@ -190,6 +190,18 @@ $maintenance_types = [
         </div>
     </div>
 
+    <!-- Cumulative Kilometers Chart -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">Kummulierte Kilometer</div>
+                <div class="card-body">
+                    <canvas id="cumulativeKilometersChart" width="800" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Chart.js Library with fallback -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script>
@@ -197,7 +209,7 @@ $maintenance_types = [
         if (typeof Chart === 'undefined') {
             console.warn('Chart.js failed to load. Dashboard charts will not be displayed.');
             // Hide chart containers if Chart.js is not available
-            const chartContainers = ['monthlyFuelChart', 'costDistributionChart', 'consumptionTrendChart'];
+            const chartContainers = ['monthlyFuelChart', 'costDistributionChart', 'consumptionTrendChart', 'cumulativeKilometersChart'];
             chartContainers.forEach(id => {
                 const element = document.getElementById(id);
                 if (element) {
@@ -259,6 +271,67 @@ $maintenance_types = [
                 $consumption_data[] = round($avg_consumption, 1);
                 $vehicle_labels[] = $vehicle['marke'] . ' ' . $vehicle['modell'];
             }
+        }
+        
+        // Get cumulative kilometers data
+        $cumulative_km_data = [];
+        $cumulative_km_labels = [];
+        
+        // Get all mileage data from all sources, ordered chronologically
+        $cumulative_query = "
+            SELECT 
+                'fuel' as source,
+                date_recorded,
+                mileage,
+                vehicle_id
+            FROM fuel_records 
+            WHERE mileage IS NOT NULL AND mileage > 0
+            
+            UNION ALL
+            
+            SELECT 
+                'mileage' as source,
+                date_recorded,
+                mileage,
+                vehicle_id
+            FROM mileage_records 
+            WHERE mileage IS NOT NULL AND mileage > 0
+            
+            UNION ALL
+            
+            SELECT 
+                'maintenance' as source,
+                date_performed as date_recorded,
+                mileage,
+                vehicle_id
+            FROM maintenance_records 
+            WHERE mileage IS NOT NULL AND mileage > 0
+            
+            ORDER BY date_recorded ASC, mileage ASC
+        ";
+        
+        $cumulative_stmt = $db->query($cumulative_query);
+        $all_mileage_records = $cumulative_stmt->fetchAll();
+        
+        // Calculate cumulative kilometers by taking the maximum mileage for each date
+        // (since multiple records can exist for the same date)
+        $mileage_by_date = [];
+        foreach ($all_mileage_records as $record) {
+            $date = $record['date_recorded'];
+            $mileage = (int)$record['mileage'];
+            
+            // Take the maximum mileage for each date to avoid duplicates
+            if (!isset($mileage_by_date[$date]) || $mileage > $mileage_by_date[$date]) {
+                $mileage_by_date[$date] = $mileage;
+            }
+        }
+        
+        // Sort by date and create cumulative data
+        ksort($mileage_by_date);
+        
+        foreach ($mileage_by_date as $date => $mileage) {
+            $cumulative_km_data[] = $mileage;
+            $cumulative_km_labels[] = date('d.m.Y', strtotime($date));
         }
         ?>
         
@@ -362,6 +435,62 @@ $maintenance_types = [
                     title: {
                         display: true,
                         text: 'Kraftstoffverbrauch pro Fahrzeug'
+                    }
+                }
+            }
+        });
+
+        // Cumulative Kilometers Chart
+        const cumulativeKmCtx = document.getElementById('cumulativeKilometersChart').getContext('2d');
+        const cumulativeKilometersChart = new Chart(cumulativeKmCtx, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode($cumulative_km_labels) ?>,
+                datasets: [{
+                    label: 'Kummulierte Kilometer',
+                    data: <?= json_encode($cumulative_km_data) ?>,
+                    borderColor: 'rgb(255, 159, 64)',
+                    backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Kilometer'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString('de-DE') + ' km';
+                            }
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Datum'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true
+                    },
+                    title: {
+                        display: true,
+                        text: 'Kummulierte Kilometer im Zeitverlauf'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y.toLocaleString('de-DE') + ' km';
+                            }
+                        }
                     }
                 }
             }

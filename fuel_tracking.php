@@ -22,14 +22,29 @@ if (!$vehicle) {
 
 // Handle fuel record form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_fuel'])) {
-    $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, fuel_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    // Parse German date format DD.MM.YYYY to YYYY-MM-DD for database storage
+    $date_input = $_POST['date_recorded'];
+    $date_formatted = $date_input;
+    
+    // Check if it's in German format DD.MM.YYYY
+    if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $date_input, $matches)) {
+        $date_formatted = $matches[3] . '-' . $matches[2] . '-' . $matches[1]; // Convert to YYYY-MM-DD
+    }
+    
+    // Convert German decimal format (comma) to standard decimal format (dot) for price
+    $price_input = str_replace(',', '.', $_POST['fuel_price_per_liter']);
+    $amount_input = str_replace(',', '.', $_POST['fuel_amount_liters']);
+    
+    $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, fuel_type, displayed_consumption, engine_runtime, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
         ->execute([
             $vehicle_id,
             $_POST['mileage'],
-            $_POST['date_recorded'],
-            $_POST['fuel_price_per_liter'],
-            $_POST['fuel_amount_liters'],
-            $_POST['fuel_type'] ?? 'Benzin',
+            $date_formatted,
+            $price_input,
+            $amount_input,
+            $_POST['fuel_type'] ?? 'Super',
+            !empty($_POST['displayed_consumption']) ? str_replace(',', '.', $_POST['displayed_consumption']) : null,
+            !empty($_POST['engine_runtime']) ? $_POST['engine_runtime'] : null,
             $_POST['notes'] ?? ''
         ]);
     header("Location: fuel_tracking.php?id=" . $vehicle_id);
@@ -116,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                                 $formatted_date,
                                 (float)$preiprol,
                                 (float)$liter,
-                                'Benzin', // Default fuel type for CSV import
+                                'Super', // Default fuel type for CSV import
                                 "CSV Import - ID: $csv_id"
                             ]);
                         $imported_count++;
@@ -283,37 +298,44 @@ if (count($fuel_records) >= 2) {
                                 <input type="number" name="mileage" id="mileage" class="form-control" required>
                             </div>
                             <div class="col-md-3">
-                                <label for="date_recorded" class="form-label">Datum</label>
-                                <input type="date" name="date_recorded" id="date_recorded" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                                <label for="date_recorded" class="form-label">Datum (DD.MM.YYYY)</label>
+                                <input type="text" name="date_recorded" id="date_recorded" class="form-control" placeholder="DD.MM.YYYY" value="<?= date('d.m.Y') ?>" pattern="\d{2}\.\d{2}\.\d{4}" required>
                             </div>
                             <div class="col-md-3">
                                 <label for="fuel_price_per_liter" class="form-label">Preis pro Liter (€)</label>
-                                <input type="number" step="0.001" name="fuel_price_per_liter" id="fuel_price_per_liter" class="form-control" required>
+                                <input type="text" step="0.001" name="fuel_price_per_liter" id="fuel_price_per_liter" class="form-control" placeholder="1,650" pattern="[0-9]+([,\.][0-9]+)?" required>
                             </div>
                             <div class="col-md-3">
                                 <label for="fuel_amount_liters" class="form-label">Spritmenge (L)</label>
-                                <input type="number" step="0.01" name="fuel_amount_liters" id="fuel_amount_liters" class="form-control" required>
+                                <input type="text" step="0.01" name="fuel_amount_liters" id="fuel_amount_liters" class="form-control" placeholder="45,5" pattern="[0-9]+([,\.][0-9]+)?" required>
                             </div>
                         </div>
                         <div class="row g-3">
                             <div class="col-md-3">
                                 <label for="fuel_type" class="form-label">Kraftstoffart</label>
                                 <select name="fuel_type" id="fuel_type" class="form-select">
-                                    <option value="Benzin">Benzin</option>
+                                    <option value="Super">Super</option>
+                                    <option value="Super E10">Super E10</option>
                                     <option value="Diesel">Diesel</option>
-                                    <option value="LPG">LPG (Autogas)</option>
-                                    <option value="CNG">CNG (Erdgas)</option>
-                                    <option value="Elektro">Elektro</option>
-                                    <option value="Hybrid">Hybrid</option>
+                                    <option value="Super Premium">Super Premium</option>
                                 </select>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-3">
+                                <label for="displayed_consumption" class="form-label">Angezeigter Verbrauch (L/100km)</label>
+                                <input type="text" step="0.1" name="displayed_consumption" id="displayed_consumption" class="form-control" placeholder="6,5" pattern="[0-9]+([,\.][0-9]+)?">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="engine_runtime" class="form-label">Motor Laufzeit (min)</label>
+                                <input type="number" name="engine_runtime" id="engine_runtime" class="form-control" placeholder="120" min="0">
+                            </div>
+                            <div class="col-md-3">
                                 <label for="notes" class="form-label">Notizen (optional)</label>
                                 <input type="text" name="notes" id="notes" class="form-control">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label">&nbsp;</label>
-                                <button type="submit" name="add_fuel" class="btn btn-primary w-100">Hinzufügen</button>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-12">
+                                <button type="submit" name="add_fuel" class="btn btn-primary">Hinzufügen</button>
                             </div>
                         </div>
                     </form>
@@ -656,6 +678,8 @@ if (count($fuel_records) >= 2) {
                                         <th>Kraftstoffart</th>
                                         <th>Preis/L</th>
                                         <th>Menge (L)</th>
+                                        <th>Angezeigter Verbrauch</th>
+                                        <th>Motor Laufzeit</th>
                                         <th>Gesamtkosten</th>
                                         <th>Notizen</th>
                                     </tr>
@@ -665,9 +689,11 @@ if (count($fuel_records) >= 2) {
                                     <tr>
                                         <td><?= date('d.m.Y', strtotime($record['date_recorded'])) ?></td>
                                         <td><?= number_format($record['mileage'], 0, ',', '.') ?> km</td>
-                                        <td><?= htmlspecialchars($record['fuel_type'] ?? 'Benzin') ?></td>
+                                        <td><?= htmlspecialchars($record['fuel_type'] ?? 'Super') ?></td>
                                         <td><?= number_format($record['fuel_price_per_liter'], 3, ',', '.') ?> €</td>
                                         <td><?= number_format($record['fuel_amount_liters'], 2, ',', '.') ?> L</td>
+                                        <td><?= !empty($record['displayed_consumption']) ? number_format($record['displayed_consumption'], 1, ',', '.') . ' L/100km' : '-' ?></td>
+                                        <td><?= !empty($record['engine_runtime']) ? $record['engine_runtime'] . ' min' : '-' ?></td>
                                         <td><?= number_format($record['total_cost'], 2, ',', '.') ?> €</td>
                                         <td><?= htmlspecialchars($record['notes'] ?? '') ?></td>
                                     </tr>

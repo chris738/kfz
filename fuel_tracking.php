@@ -222,12 +222,58 @@ if (count($fuel_records) >= 2) {
         $avg_consumption = ($total_fuel / $total_km) * 100;
     }
 }
+
+// Prepare data for enhanced charts
+// Prepare data for fuel price chart
+$price_data = [];
+$price_labels = [];
+foreach (array_reverse($fuel_records) as $record) {
+    $price_data[] = round($record['fuel_price_per_liter'], 3);
+    $price_labels[] = date('d.m.Y', strtotime($record['date_recorded']));
+}
+
+// Prepare consumption data
+$consumption_chart_data = [];
+$consumption_labels = [];
+foreach ($consumption_stats as $stat) {
+    $consumption_chart_data[] = round($stat['consumption'], 2);
+    $consumption_labels[] = date('d.m', strtotime($stat['to_date']));
+}
+
+// Prepare fuel type distribution
+$fuel_type_counts = [];
+foreach ($fuel_records as $record) {
+    $type = $record['fuel_type'] ?? 'Benzin';
+    $fuel_type_counts[$type] = ($fuel_type_counts[$type] ?? 0) + 1;
+}
+
+// Prepare monthly costs
+$monthly_costs = [];
+$monthly_labels = [];
+
+for ($i = 5; $i >= 0; $i--) {
+    $month_start = date('Y-m-01', strtotime("-$i months"));
+    $month_end = date('Y-m-t', strtotime("-$i months"));
+    
+    $monthly_cost = 0;
+    foreach ($fuel_records as $record) {
+        if ($record['date_recorded'] >= $month_start && $record['date_recorded'] <= $month_end) {
+            $monthly_cost += $record['total_cost'];
+        }
+    }
+    
+    $monthly_costs[] = round($monthly_cost, 2);
+    $monthly_labels[] = date('M Y', strtotime($month_start));
+}
 ?>
 <!DOCTYPE html>
 <html>
 <head>
     <title>Spritkosten - <?= htmlspecialchars($vehicle['marke'] . ' ' . $vehicle['modell']) ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <script src="js/chart-fallback.js"></script>
+    <script src="js/chart-config.js"></script>
 </head>
 <body class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -403,38 +449,49 @@ if (count($fuel_records) >= 2) {
     <div class="row mb-4">
         <div class="col-md-6">
             <div class="card">
-                <div class="card-header">Kraftstoffpreise Entwicklung</div>
+                <div class="card-header">
+                    <i class="bi bi-graph-up"></i> Kraftstoffpreise Entwicklung 
+                    <small class="text-muted">(Scrollbar & Zoombar)</small>
+                </div>
                 <div class="card-body">
-                    <canvas id="fuelPriceChart" width="400" height="200"></canvas>
+                    <div id="enhancedFuelPriceChart"></div>
                 </div>
             </div>
         </div>
         <div class="col-md-6">
             <div class="card">
-                <div class="card-header">Verbrauchstrends</div>
+                <div class="card-header">
+                    <i class="bi bi-speedometer2"></i> Verbrauchstrends
+                    <small class="text-muted">(Erweitert)</small>
+                </div>
                 <div class="card-body">
-                    <canvas id="consumptionChart" width="400" height="200"></canvas>
+                    <div id="enhancedConsumptionChart"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <?php if (!empty($fuel_records)): ?>
-    <!-- Fuel Type Distribution -->
+    <!-- Enhanced Fuel Type Distribution and Monthly Costs -->
     <div class="row mb-4">
         <div class="col-md-6">
             <div class="card">
-                <div class="card-header">Kraftstoffarten Verteilung</div>
+                <div class="card-header">
+                    <i class="bi bi-pie-chart"></i> Kraftstoffarten Verteilung
+                </div>
                 <div class="card-body">
-                    <canvas id="fuelTypeChart" width="400" height="200"></canvas>
+                    <div id="enhancedFuelTypeChart"></div>
                 </div>
             </div>
         </div>
         <div class="col-md-6">
             <div class="card">
-                <div class="card-header">Monatliche Kosten</div>
+                <div class="card-header">
+                    <i class="bi bi-bar-chart"></i> Monatliche Kosten 
+                    <small class="text-muted">(Scrollbar)</small>
+                </div>
                 <div class="card-body">
-                    <canvas id="monthlyCostChart" width="400" height="200"></canvas>
+                    <div id="enhancedMonthlyCostChart"></div>
                 </div>
             </div>
         </div>
@@ -442,105 +499,68 @@ if (count($fuel_records) >= 2) {
     <?php endif; ?>
 
     <!-- Chart.js Library with fallback -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script>
-        // Check if Chart.js loaded successfully
-        if (typeof Chart === 'undefined') {
-            console.warn('Chart.js failed to load. Charts will not be displayed.');
-            // Hide chart containers if Chart.js is not available
-            const chartContainers = ['monthlyFuelChart', 'consumptionChart', 'fuelTypeChart', 'monthlyCostChart'];
-            chartContainers.forEach(id => {
-                const element = document.getElementById(id);
-                if (element) {
-                    element.parentElement.innerHTML = '<p class="text-muted text-center">Diagramm nicht verfügbar (Chart.js Bibliothek konnte nicht geladen werden)</p>';
+        // Wait for charts to be ready
+        document.addEventListener('chartsReady', function() {
+            initializeFuelTrackingCharts();
+        });
+        
+        // Fallback initialization  
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (typeof Chart !== 'undefined') {
+                    initializeFuelTrackingCharts();
+                } else {
+                    handleChartLoadingFailure();
                 }
-            });
-        } else {
-            // Chart.js is available, proceed with chart creation
-            <?php if (!empty($fuel_records)): ?>
-            // Fuel Price Development Chart
-            const fuelPriceCtx = document.getElementById('fuelPriceChart').getContext('2d');
+            }, 2000);
+        });
         
-        <?php
-        // Prepare data for fuel price chart
-        $price_data = [];
-        $price_labels = [];
-        foreach (array_reverse($fuel_records) as $record) {
-            $price_data[] = round($record['fuel_price_per_liter'], 3);
-            $price_labels[] = date('d.m.Y', strtotime($record['date_recorded']));
-        }
-        
-        // Prepare consumption data
-        $consumption_chart_data = [];
-        $consumption_labels = [];
-        foreach ($consumption_stats as $stat) {
-            $consumption_chart_data[] = round($stat['consumption'], 2);
-            $consumption_labels[] = date('d.m', strtotime($stat['to_date']));
-        }
-        
-        // Prepare fuel type distribution
-        $fuel_type_counts = [];
-        foreach ($fuel_records as $record) {
-            $type = $record['fuel_type'] ?? 'Benzin';
-            $fuel_type_counts[$type] = ($fuel_type_counts[$type] ?? 0) + 1;
-        }
-        
-        // Prepare monthly costs
-        $monthly_costs = [];
-        $monthly_labels = [];
-        
-        for ($i = 5; $i >= 0; $i--) {
-            $month_start = date('Y-m-01', strtotime("-$i months"));
-            $month_end = date('Y-m-t', strtotime("-$i months"));
-            
-            $monthly_cost = 0;
-            foreach ($fuel_records as $record) {
-                if ($record['date_recorded'] >= $month_start && $record['date_recorded'] <= $month_end) {
-                    $monthly_cost += $record['total_cost'];
-                }
+        function initializeFuelTrackingCharts() {
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js not available, skipping chart initialization');
+                return;
             }
             
-            $monthly_costs[] = round($monthly_cost, 2);
-            $monthly_labels[] = date('M Y', strtotime($month_start));
-        }
-        ?>
-        
-        const fuelPriceChart = new Chart(fuelPriceCtx, {
-            type: 'line',
-            data: {
+            <?php if (!empty($fuel_records)): ?>
+            // Enhanced Fuel Price Development Chart
+            const fuelPriceData = {
                 labels: <?= json_encode(array_slice($price_labels, -20)) ?>, // Last 20 entries
                 datasets: [{
                     label: 'Preis pro Liter (€)',
                     data: <?= json_encode(array_slice($price_data, -20)) ?>,
                     borderColor: 'rgb(255, 99, 132)',
                     backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderWidth: 2,
                     tension: 0.1
                 }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Preis (€/L)'
+            };
+            
+            createKilometerProgressionChart('enhancedFuelPriceChart', fuelPriceData, {
+                title: 'Kraftstoffpreise Entwicklung',
+                defaultRange: '6m',
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Preis: ${context.parsed.y.toFixed(3)}€/L`;
+                            }
                         }
                     }
                 },
-                plugins: {
-                    legend: {
-                        display: true
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Preis (€/L)'
+                        },
+                        beginAtZero: false
                     }
                 }
-            }
-        });
-
-        // Consumption Trend Chart
-        const consumptionCtx = document.getElementById('consumptionChart').getContext('2d');
-        const consumptionChart = new Chart(consumptionCtx, {
-            type: 'bar',
-            data: {
+            });
+            
+            // Enhanced Consumption Chart
+            const consumptionData = {
                 labels: <?= json_encode($consumption_labels) ?>,
                 datasets: [{
                     label: 'Verbrauch (L/100km)',
@@ -549,59 +569,69 @@ if (count($fuel_records) >= 2) {
                     borderColor: 'rgba(75, 192, 192, 1)',
                     borderWidth: 1
                 }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Verbrauch (L/100km)'
+            };
+            
+            createKilometerProgressionChart('enhancedConsumptionChart', consumptionData, {
+                title: 'Verbrauchstrends',
+                defaultRange: 'all',
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Verbrauch: ${context.parsed.y.toFixed(2)}L/100km`;
+                            }
                         }
                     }
                 },
-                plugins: {
-                    legend: {
-                        display: true
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Verbrauch (L/100km)'
+                        },
+                        beginAtZero: true
                     }
                 }
-            }
-        });
-
-        // Fuel Type Distribution Chart
-        const fuelTypeCtx = document.getElementById('fuelTypeChart').getContext('2d');
-        const fuelTypeChart = new Chart(fuelTypeCtx, {
-            type: 'pie',
-            data: {
-                labels: <?= json_encode(array_keys($fuel_type_counts)) ?>,
-                datasets: [{
-                    data: <?= json_encode(array_values($fuel_type_counts)) ?>,
-                    backgroundColor: [
-                        'rgba(255, 99, 132, 0.8)',
-                        'rgba(54, 162, 235, 0.8)',
-                        'rgba(255, 205, 86, 0.8)',
-                        'rgba(75, 192, 192, 0.8)',
-                        'rgba(153, 102, 255, 0.8)',
-                        'rgba(255, 159, 64, 0.8)'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
+            });
+            
+            // Enhanced Fuel Type Distribution Chart - using standard Chart.js for pie chart
+            const fuelTypeCtx = document.createElement('canvas');
+            fuelTypeCtx.id = 'fuelTypeCanvas';
+            document.getElementById('enhancedFuelTypeChart').appendChild(fuelTypeCtx);
+            
+            const fuelTypeChart = new Chart(fuelTypeCtx, {
+                type: 'pie',
+                data: {
+                    labels: <?= json_encode(array_keys($fuel_type_counts)) ?>,
+                    datasets: [{
+                        data: <?= json_encode(array_values($fuel_type_counts)) ?>,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.8)',
+                            'rgba(54, 162, 235, 0.8)',
+                            'rgba(255, 205, 86, 0.8)',
+                            'rgba(75, 192, 192, 0.8)',
+                            'rgba(153, 102, 255, 0.8)',
+                            'rgba(255, 159, 64, 0.8)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Kraftstoffarten Verteilung'
+                        }
                     }
                 }
-            }
-        });
-
-        // Monthly Cost Chart
-        const monthlyCostCtx = document.getElementById('monthlyCostChart').getContext('2d');
-        const monthlyCostChart = new Chart(monthlyCostCtx, {
-            type: 'bar',
-            data: {
+            });
+            
+            // Enhanced Monthly Cost Chart
+            const monthlyCostData = {
                 labels: <?= json_encode($monthly_labels) ?>,
                 datasets: [{
                     label: 'Kosten (€)',
@@ -610,36 +640,54 @@ if (count($fuel_records) >= 2) {
                     borderColor: 'rgba(153, 102, 255, 1)',
                     borderWidth: 1
                 }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Kosten (€)'
+            };
+            
+            createKilometerProgressionChart('enhancedMonthlyCostChart', monthlyCostData, {
+                title: 'Monatliche Kraftstoffkosten',
+                defaultRange: '1y',
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Kosten: ${context.parsed.y.toFixed(2)}€`;
+                            }
                         }
                     }
                 },
-                plugins: {
-                    legend: {
-                        display: true
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Kosten (€)'
+                        },
+                        beginAtZero: true
                     }
                 }
-            }
-        });
-        <?php else: ?>
-        // Show placeholder for empty data
-        const chartContainers = ['fuelPriceChart', 'consumptionChart', 'fuelTypeChart', 'monthlyCostChart'];
-        chartContainers.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.parentElement.innerHTML = '<p class="text-muted text-center">Keine Daten für Diagramm verfügbar</p>';
-            }
-        });
-        <?php endif; ?>
-        } // End of Chart.js available check
+            });
+            
+            <?php else: ?>
+            // Show placeholder for empty data
+            const chartContainers = ['enhancedFuelPriceChart', 'enhancedConsumptionChart', 'enhancedFuelTypeChart', 'enhancedMonthlyCostChart'];
+            chartContainers.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.innerHTML = '<p class="text-muted text-center"><i class="bi bi-info-circle"></i> Keine Daten für Diagramm verfügbar</p>';
+                }
+            });
+            <?php endif; ?>
+        }
+        
+        function handleChartLoadingFailure() {
+            console.warn('Chart.js failed to load. Fuel tracking charts will not be displayed.');
+            const chartContainers = ['enhancedFuelPriceChart', 'enhancedConsumptionChart', 'enhancedFuelTypeChart', 'enhancedMonthlyCostChart'];
+            chartContainers.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.innerHTML = '<p class="text-muted text-center"><i class="bi bi-exclamation-triangle"></i> Diagramm nicht verfügbar (Chart.js Bibliothek konnte nicht geladen werden)</p>';
+                }
+            });
+        }
+    </script>
     </script>
 
     <!-- Fuel Records History -->

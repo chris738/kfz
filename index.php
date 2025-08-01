@@ -49,6 +49,9 @@ $maintenance_types = [
 <head>
     <title>KFZ Verwaltung Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <script src="js/chart-fallback.js"></script>
+    <script src="js/chart-config.js"></script>
 </head>
 <body class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -190,261 +193,49 @@ $maintenance_types = [
         </div>
     </div>
 
-    <!-- Cumulative Kilometers Chart -->
+    <!-- Enhanced Cumulative Kilometers Chart -->
     <div class="row mb-4">
         <div class="col-md-12">
             <div class="card">
-                <div class="card-header">Kummulierte Kilometer</div>
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up-arrow"></i> Erweiterte Kummulierte Kilometer-Progression
+                        <small class="text-muted">(Scrollbar & Zoombar)</small>
+                    </h5>
+                </div>
                 <div class="card-body">
-                    <canvas id="cumulativeKilometersChart" width="800" height="300"></canvas>
+                    <div id="enhancedCumulativeKilometersChart"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Chart.js Library with fallback -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script>
-        // Check if Chart.js loaded successfully
-        if (typeof Chart === 'undefined') {
-            console.warn('Chart.js failed to load. Dashboard charts will not be displayed.');
-            // Hide chart containers if Chart.js is not available
-            const chartContainers = ['monthlyFuelChart', 'costDistributionChart', 'consumptionTrendChart', 'cumulativeKilometersChart'];
-            chartContainers.forEach(id => {
-                const element = document.getElementById(id);
-                if (element) {
-                    element.parentElement.innerHTML = '<p class="text-muted text-center">Diagramm nicht verfügbar (Chart.js Bibliothek konnte nicht geladen werden)</p>';
-                }
-            });
-        } else {
-            // Chart.js is available, proceed with chart creation
-            // Monthly Fuel Costs Chart
-            const monthlyFuelCtx = document.getElementById('monthlyFuelChart').getContext('2d');
-        
-        // Get monthly fuel data from PHP
-        <?php
-        // Generate monthly fuel cost data for the last 12 months
-        $monthly_fuel_data = [];
-        $labels = [];
-        
-        for ($i = 11; $i >= 0; $i--) {
-            $month_start = date('Y-m-01', strtotime("-$i months"));
-            $month_end = date('Y-m-t', strtotime("-$i months"));
-            
-            $stmt = $db->prepare("
-                SELECT COALESCE(SUM(total_cost), 0) as monthly_cost 
-                FROM fuel_records 
-                WHERE date_recorded BETWEEN ? AND ?
-            ");
-            $stmt->execute([$month_start, $month_end]);
-            $monthly_cost = $stmt->fetchColumn();
-            
-            $monthly_fuel_data[] = round($monthly_cost, 2);
-            $labels[] = date('M Y', strtotime($month_start));
-        }
-        
-        // Get consumption data for each vehicle
-        $consumption_data = [];
-        $vehicle_labels = [];
-        
-        $vehicles_stmt = $db->query("SELECT id, marke, modell FROM vehicles");
-        $vehicles = $vehicles_stmt->fetchAll();
-        
-        foreach ($vehicles as $vehicle) {
-            $stmt = $db->prepare("
-                SELECT 
-                    COALESCE(AVG(
-                        (fuel_amount_liters / 
-                         NULLIF((mileage - LAG(mileage) OVER (ORDER BY date_recorded)), 0)
-                        ) * 100
-                    ), 0) as avg_consumption
-                FROM fuel_records 
-                WHERE vehicle_id = ? 
-                AND mileage > (
-                    SELECT MIN(mileage) FROM fuel_records WHERE vehicle_id = ?
-                )
-            ");
-            $stmt->execute([$vehicle['id'], $vehicle['id']]);
-            $avg_consumption = $stmt->fetchColumn();
-            
-            if ($avg_consumption > 0 && $avg_consumption < 50) { // Reasonable consumption values
-                $consumption_data[] = round($avg_consumption, 1);
-                $vehicle_labels[] = $vehicle['marke'] . ' ' . $vehicle['modell'];
-            }
-        }
-        
-        // Get cumulative kilometers data
-        $cumulative_km_data = [];
-        $cumulative_km_labels = [];
-        
-        // Get all mileage data from all sources, ordered chronologically
-        $cumulative_query = "
-            SELECT 
-                'fuel' as source,
-                date_recorded,
-                mileage,
-                vehicle_id
-            FROM fuel_records 
-            WHERE mileage IS NOT NULL AND mileage > 0
-            
-            UNION ALL
-            
-            SELECT 
-                'mileage' as source,
-                date_recorded,
-                mileage,
-                vehicle_id
-            FROM mileage_records 
-            WHERE mileage IS NOT NULL AND mileage > 0
-            
-            UNION ALL
-            
-            SELECT 
-                'maintenance' as source,
-                date_performed as date_recorded,
-                mileage,
-                vehicle_id
-            FROM maintenance_records 
-            WHERE mileage IS NOT NULL AND mileage > 0
-            
-            ORDER BY date_recorded ASC, mileage ASC
-        ";
-        
-        $cumulative_stmt = $db->query($cumulative_query);
-        $all_mileage_records = $cumulative_stmt->fetchAll();
-        
-        // Calculate cumulative kilometers by taking the maximum mileage for each date
-        // (since multiple records can exist for the same date)
-        $mileage_by_date = [];
-        foreach ($all_mileage_records as $record) {
-            $date = $record['date_recorded'];
-            $mileage = (int)$record['mileage'];
-            
-            // Take the maximum mileage for each date to avoid duplicates
-            if (!isset($mileage_by_date[$date]) || $mileage > $mileage_by_date[$date]) {
-                $mileage_by_date[$date] = $mileage;
-            }
-        }
-        
-        // Sort by date and create cumulative data
-        ksort($mileage_by_date);
-        
-        foreach ($mileage_by_date as $date => $mileage) {
-            $cumulative_km_data[] = $mileage;
-            $cumulative_km_labels[] = date('d.m.Y', strtotime($date));
-        }
-        ?>
-        
-        const monthlyFuelChart = new Chart(monthlyFuelCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode($labels) ?>,
-                datasets: [{
-                    label: 'Kraftstoffkosten (€)',
-                    data: <?= json_encode($monthly_fuel_data) ?>,
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Kosten (€)'
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: true
-                    },
-                    title: {
-                        display: true,
-                        text: 'Monatliche Kraftstoffkosten Entwicklung'
-                    }
-                }
-            }
+        // Check if charts are ready, then initialize them
+        document.addEventListener('chartsReady', function() {
+            initializeDashboardCharts();
         });
-
-        // Cost Distribution Pie Chart
-        const costDistributionCtx = document.getElementById('costDistributionChart').getContext('2d');
-        const costDistributionChart = new Chart(costDistributionCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Kraftstoffkosten', 'Wartungskosten'],
-                datasets: [{
-                    data: [<?= $total_fuel_cost ?>, <?= $total_maintenance_cost ?>],
-                    backgroundColor: [
-                        'rgba(54, 162, 235, 0.8)',
-                        'rgba(255, 99, 132, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgba(54, 162, 235, 1)',
-                        'rgba(255, 99, 132, 1)'
-                    ],
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    },
-                    title: {
-                        display: true,
-                        text: 'Gesamtkostenverteilung'
-                    }
+        
+        // Fallback initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (typeof Chart !== 'undefined') {
+                    initializeDashboardCharts();
+                } else {
+                    handleChartLoadingFailure();
                 }
-            }
+            }, 2000);
         });
-
-        // Consumption Trend Chart
-        const consumptionTrendCtx = document.getElementById('consumptionTrendChart').getContext('2d');
-        const consumptionTrendChart = new Chart(consumptionTrendCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($vehicle_labels) ?>,
-                datasets: [{
-                    label: 'Durchschnittsverbrauch (L/100km)',
-                    data: <?= json_encode($consumption_data) ?>,
-                    backgroundColor: 'rgba(153, 102, 255, 0.6)',
-                    borderColor: 'rgba(153, 102, 255, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Verbrauch (L/100km)'
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: true
-                    },
-                    title: {
-                        display: true,
-                        text: 'Kraftstoffverbrauch pro Fahrzeug'
-                    }
-                }
+        
+        function initializeDashboardCharts() {
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js not available, skipping chart initialization');
+                return;
             }
-        });
-
-        // Cumulative Kilometers Chart
-        const cumulativeKmCtx = document.getElementById('cumulativeKilometersChart').getContext('2d');
-        const cumulativeKilometersChart = new Chart(cumulativeKmCtx, {
-            type: 'line',
-            data: {
+            
+            // Enhanced Cumulative Kilometers Chart with integrated data
+            const cumulativeKmData = {
                 labels: <?= json_encode($cumulative_km_labels) ?>,
                 datasets: [{
                     label: 'Kummulierte Kilometer',
@@ -452,50 +243,208 @@ $maintenance_types = [
                     borderColor: 'rgb(255, 159, 64)',
                     backgroundColor: 'rgba(255, 159, 64, 0.2)',
                     tension: 0.1,
-                    fill: true
+                    fill: true,
+                    borderWidth: 3
                 }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Kilometer'
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return value.toLocaleString('de-DE') + ' km';
-                            }
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Datum'
-                        }
-                    }
-                },
+            };
+            
+            // Get additional data for fuel and maintenance markers
+            <?php
+            // Get all fuel records with vehicle info for markers
+            $fuel_markers_stmt = $db->query("
+                SELECT f.date_recorded, f.mileage, v.marke, v.modell, f.total_cost, f.fuel_amount_liters
+                FROM fuel_records f 
+                JOIN vehicles v ON f.vehicle_id = v.id 
+                WHERE f.mileage IS NOT NULL AND f.mileage > 0
+                ORDER BY f.date_recorded ASC
+            ");
+            $fuel_markers = $fuel_markers_stmt->fetchAll();
+            
+            // Get all maintenance records with vehicle info for markers  
+            $maintenance_markers_stmt = $db->query("
+                SELECT m.date_performed as date_recorded, m.mileage, v.marke, v.modell, m.cost, m.maintenance_type
+                FROM maintenance_records m 
+                JOIN vehicles v ON m.vehicle_id = v.id 
+                WHERE m.mileage IS NOT NULL AND m.mileage > 0
+                ORDER BY m.date_performed ASC
+            ");
+            $maintenance_markers = $maintenance_markers_stmt->fetchAll();
+            ?>
+            
+            const fuelMarkers = <?= json_encode(array_map(function($item) {
+                return [
+                    'date' => date('d.m.Y', strtotime($item['date_recorded'])),
+                    'mileage' => (int)$item['mileage'],
+                    'vehicle' => $item['marke'] . ' ' . $item['modell'],
+                    'cost' => number_format($item['total_cost'], 2, ',', '.'),
+                    'liters' => number_format($item['fuel_amount_liters'], 1, ',', '.')
+                ];
+            }, $fuel_markers)) ?>;
+            
+            const maintenanceMarkers = <?= json_encode(array_map(function($item) {
+                return [
+                    'date' => date('d.m.Y', strtotime($item['date_recorded'])),
+                    'mileage' => (int)$item['mileage'],
+                    'vehicle' => $item['marke'] . ' ' . $item['modell'],
+                    'cost' => number_format($item['cost'], 2, ',', '.'),
+                    'type' => $item['maintenance_type']
+                ];
+            }, $maintenance_markers)) ?>;
+            
+            // Create enhanced cumulative kilometers chart
+            createIntegratedKilometerChart('enhancedCumulativeKilometersChart', cumulativeKmData, fuelMarkers, maintenanceMarkers, {
+                title: 'Kummulierte Kilometer-Progression (Alle Fahrzeuge)',
+                defaultRange: '1y',
                 plugins: {
-                    legend: {
-                        display: true
-                    },
-                    title: {
-                        display: true,
-                        text: 'Kummulierte Kilometer im Zeitverlauf'
-                    },
                     tooltip: {
                         callbacks: {
-                            label: function(context) {
-                                return context.dataset.label + ': ' + context.parsed.y.toLocaleString('de-DE') + ' km';
+                            afterBody: function(context) {
+                                const point = context[0];
+                                if (point.dataset.label === 'Tankungen') {
+                                    const fuel = fuelMarkers[point.dataIndex];
+                                    return [`Fahrzeug: ${fuel.vehicle}`, `Kraftstoff: ${fuel.liters}L`, `Kosten: ${fuel.cost}€`];
+                                } else if (point.dataset.label === 'Wartungen') {
+                                    const maintenance = maintenanceMarkers[point.dataIndex];
+                                    return [`Fahrzeug: ${maintenance.vehicle}`, `Art: ${maintenance.type}`, `Kosten: ${maintenance.cost}€`];
+                                }
+                                return [];
                             }
                         }
                     }
                 }
+            });
+            
+            // Initialize other existing charts
+            initializeOtherCharts();
+        }
+        
+        function initializeOtherCharts() {
+            // Monthly Fuel Costs Chart
+            const monthlyFuelCtx = document.getElementById('monthlyFuelChart')?.getContext('2d');
+            if (monthlyFuelCtx) {
+                const monthlyFuelChart = new Chart(monthlyFuelCtx, {
+                    type: 'line',
+                    data: {
+                        labels: <?= json_encode($labels) ?>,
+                        datasets: [{
+                            label: 'Kraftstoffkosten (€)',
+                            data: <?= json_encode($monthly_fuel_data) ?>,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Kosten (€)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true
+                            },
+                            title: {
+                                display: true,
+                                text: 'Monatliche Kraftstoffkosten Entwicklung'
+                            }
+                        }
+                    }
+                });
             }
-        });
-        } // End of Chart.js available check
+
+            // Cost Distribution Pie Chart
+            const costDistributionCtx = document.getElementById('costDistributionChart')?.getContext('2d');
+            if (costDistributionCtx) {
+                const costDistributionChart = new Chart(costDistributionCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Kraftstoffkosten', 'Wartungskosten'],
+                        datasets: [{
+                            data: [<?= $total_fuel_cost ?>, <?= $total_maintenance_cost ?>],
+                            backgroundColor: [
+                                'rgba(54, 162, 235, 0.8)',
+                                'rgba(255, 99, 132, 0.8)'
+                            ],
+                            borderColor: [
+                                'rgba(54, 162, 235, 1)',
+                                'rgba(255, 99, 132, 1)'
+                            ],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Gesamtkostenverteilung'
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Consumption Trend Chart
+            const consumptionTrendCtx = document.getElementById('consumptionTrendChart')?.getContext('2d');
+            if (consumptionTrendCtx) {
+                const consumptionTrendChart = new Chart(consumptionTrendCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: <?= json_encode($vehicle_labels) ?>,
+                        datasets: [{
+                            label: 'Durchschnittsverbrauch (L/100km)',
+                            data: <?= json_encode($consumption_data) ?>,
+                            backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                            borderColor: 'rgba(153, 102, 255, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Verbrauch (L/100km)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true
+                            },
+                            title: {
+                                display: true,
+                                text: 'Kraftstoffverbrauch pro Fahrzeug'
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        function handleChartLoadingFailure() {
+            console.warn('Chart.js failed to load. Dashboard charts will not be displayed.');
+            // Hide chart containers if Chart.js is not available
+            const chartContainers = ['monthlyFuelChart', 'costDistributionChart', 'consumptionTrendChart', 'enhancedCumulativeKilometersChart'];
+            chartContainers.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.innerHTML = '<p class="text-muted text-center"><i class="bi bi-exclamation-triangle"></i> Diagramm nicht verfügbar (Chart.js Bibliothek konnte nicht geladen werden)</p>';
+                }
+            });
+        }
+    </script>
     </script>
 </body>
 </html>

@@ -49,6 +49,10 @@ $stmt = $db->prepare("
 $stmt->execute([$vehicle_id]);
 $chart_data = $stmt->fetchAll();
 
+// Debug: Check what we have in chart_data
+error_log("Chart data count: " . count($chart_data));
+error_log("Chart data: " . print_r($chart_data, true));
+
 // Get current mileage (latest record)
 $current_mileage = null;
 if (!empty($mileage_records)) {
@@ -116,9 +120,14 @@ if (!empty($mileage_records)) {
     </div>
 
     <!-- Enhanced Mileage Chart with Integration -->
+    <!-- DEBUG: Chart data count: <?= count($chart_data) ?> -->
+    <!-- DEBUG: Chart data exists: <?= !empty($chart_data) ? 'YES' : 'NO' ?> -->
+    <!-- DEBUG: Raw data: <?= htmlspecialchars(print_r($chart_data, true)) ?> -->
     <?php if (!empty($chart_data)): ?>
+    <!-- DEBUG: Showing enhanced chart -->
     <div class="row mb-4">
         <div class="col-12">
+            <div class="alert alert-success">ENHANCED CHART SHOULD BE HERE - DEBUG MODE</div>
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -127,14 +136,16 @@ if (!empty($mileage_records)) {
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div id="enhancedMileageChart"></div>
+                    <div id="enhancedMileageChart">Chart will be rendered here...</div>
                 </div>
             </div>
         </div>
     </div>
     <?php else: ?>
+    <!-- DEBUG: Showing no data message -->
     <div class="row mb-4">
         <div class="col-12">
+            <div class="alert alert-warning">NO DATA - DEBUG MODE</div>
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">

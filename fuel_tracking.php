@@ -2,6 +2,7 @@
 require 'auth.php';
 require_login();
 require 'db.php';
+require 'locale_de.php';
 
 // Get vehicle ID from URL
 $vehicle_id = $_GET['id'] ?? null;
@@ -26,9 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_fuel'])) {
         ->execute([
             $vehicle_id,
             $_POST['mileage'],
-            $_POST['date_recorded'],
-            $_POST['fuel_price_per_liter'],
-            $_POST['fuel_amount_liters'],
+            parse_german_date($_POST['date_recorded']),
+            parse_german_number($_POST['fuel_price_per_liter']),
+            parse_german_number($_POST['fuel_amount_liters']),
             $_POST['fuel_type'] ?? 'Benzin',
             $_POST['notes'] ?? ''
         ]);
@@ -72,50 +73,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     $preiprol = trim($data[4]);
                     
                     // Validate data
-                    if (!is_numeric($kilometer) || $kilometer < 0) {
+                    $kilometer_parsed = parse_german_number($kilometer);
+                    if ($kilometer_parsed < 0) {
                         $errors[] = "Zeile $row_num: Ungültiger Kilometerstand: $kilometer";
                         $error_count++;
                         continue;
                     }
                     
-                    if (!is_numeric($liter) || $liter <= 0) {
+                    $liter_parsed = parse_german_number($liter);
+                    if ($liter_parsed <= 0) {
                         $errors[] = "Zeile $row_num: Ungültige Spritmenge: $liter";
                         $error_count++;
                         continue;
                     }
                     
-                    if (!is_numeric($preiprol) || $preiprol <= 0) {
+                    $preiprol_parsed = parse_german_number($preiprol);
+                    if ($preiprol_parsed <= 0) {
                         $errors[] = "Zeile $row_num: Ungültiger Preis pro Liter: $preiprol";
                         $error_count++;
                         continue;
                     }
                     
-                    // Validate and convert date
-                    $date_obj = DateTime::createFromFormat('Y-m-d', $datum);
-                    if (!$date_obj) {
-                        $date_obj = DateTime::createFromFormat('d.m.Y', $datum);
+                    // Validate and convert date - now supporting German format
+                    $formatted_date = parse_german_date($datum);
+                    if (empty($formatted_date)) {
+                        // Try other formats if German format fails
+                        $date_obj = DateTime::createFromFormat('Y-m-d', $datum);
+                        if (!$date_obj) {
+                            $date_obj = DateTime::createFromFormat('d/m/Y', $datum);
+                        }
+                        
+                        if (!$date_obj) {
+                            $errors[] = "Zeile $row_num: Ungültiges Datum: $datum (Format: DD.MM.YYYY, YYYY-MM-DD oder DD/MM/YYYY)";
+                            $error_count++;
+                            continue;
+                        }
+                        $formatted_date = $date_obj->format('Y-m-d');
                     }
-                    if (!$date_obj) {
-                        $date_obj = DateTime::createFromFormat('d/m/Y', $datum);
-                    }
-                    
-                    if (!$date_obj) {
-                        $errors[] = "Zeile $row_num: Ungültiges Datum: $datum (Format: YYYY-MM-DD oder DD.MM.YYYY)";
-                        $error_count++;
-                        continue;
-                    }
-                    
-                    $formatted_date = $date_obj->format('Y-m-d');
                     
                     // Insert into database
                     try {
                         $db->prepare("INSERT INTO fuel_records (vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, fuel_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?)")
                             ->execute([
                                 $vehicle_id,
-                                (int)$kilometer,
+                                $kilometer_parsed,
                                 $formatted_date,
-                                (float)$preiprol,
-                                (float)$liter,
+                                $preiprol_parsed,
+                                $liter_parsed,
                                 'Benzin', // Default fuel type for CSV import
                                 "CSV Import - ID: $csv_id"
                             ]);
@@ -283,16 +287,16 @@ if (count($fuel_records) >= 2) {
                                 <input type="number" name="mileage" id="mileage" class="form-control" required>
                             </div>
                             <div class="col-md-3">
-                                <label for="date_recorded" class="form-label">Datum</label>
-                                <input type="date" name="date_recorded" id="date_recorded" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                                <label for="date_recorded" class="form-label">Datum (dd.mm.yyyy)</label>
+                                <input type="text" name="date_recorded" id="date_recorded" class="form-control" value="<?= current_german_date() ?>" placeholder="dd.mm.yyyy" pattern="\d{1,2}\.\d{1,2}\.\d{4}" required>
                             </div>
                             <div class="col-md-3">
                                 <label for="fuel_price_per_liter" class="form-label">Preis pro Liter (€)</label>
-                                <input type="number" step="0.001" name="fuel_price_per_liter" id="fuel_price_per_liter" class="form-control" required>
+                                <input type="text" name="fuel_price_per_liter" id="fuel_price_per_liter" class="form-control" placeholder="1,45" title="Verwenden Sie Komma als Dezimaltrennzeichen (z.B. 1,45)" required>
                             </div>
                             <div class="col-md-3">
                                 <label for="fuel_amount_liters" class="form-label">Spritmenge (L)</label>
-                                <input type="number" step="0.01" name="fuel_amount_liters" id="fuel_amount_liters" class="form-control" required>
+                                <input type="text" name="fuel_amount_liters" id="fuel_amount_liters" class="form-control" placeholder="45,20" title="Verwenden Sie Komma als Dezimaltrennzeichen (z.B. 45,20)" required>
                             </div>
                         </div>
                         <div class="row g-3">

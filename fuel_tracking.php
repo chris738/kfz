@@ -331,8 +331,10 @@ if (!empty($consumption_stats)) {
                     
                     <form method="post" enctype="multipart/form-data" class="row g-3">
                         <div class="col-md-8">
-                            <label for="csv_file" class="form-label">CSV-Datei auswählen</label>
-                            <input type="file" name="csv_file" id="csv_file" class="form-control" accept=".csv" required>
+                            <div class="mb-3">
+                                <label for="csv_file" class="form-label">CSV-Datei auswählen</label>
+                                <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required>
+                            </div>
                             <div class="form-text">
                                 Format: <code>id;datum;kilometer;liter;preiprol</code><br>
                                 Datum-Formate: YYYY-MM-DD oder DD.MM.YYYY<br>

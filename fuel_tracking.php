@@ -405,9 +405,9 @@ for ($i = 5; $i >= 0; $i--) {
                                 </label>
                                 <div class="input-group">
                                     <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv,.txt" required>
-                                    <button class="btn btn-outline-primary" type="button" id="csvFileButton">
+                                    <label class="btn btn-outline-primary" for="csv_file" id="csvFileButton">
                                         <i class="bi bi-folder2-open"></i> Datei wählen
-                                    </button>
+                                    </label>
                                 </div>
                                 <div id="fileSelectedInfo" class="mt-2 text-success" style="display: none;">
                                     <i class="bi bi-check-circle"></i> <span id="selectedFileName"></span>
@@ -439,10 +439,8 @@ for ($i = 5; $i >= 0; $i--) {
                             const selectedFileName = document.getElementById('selectedFileName');
                             const importButton = document.getElementById('importButton');
                             
-                            // Make the button trigger the file input
-                            csvFileButton.addEventListener('click', function() {
-                                csvFileInput.click();
-                            });
+                            // Label automatically triggers file input, no additional click handler needed
+                            // Keep this section for any future enhancements
                             
                             // Handle file selection
                             csvFileInput.addEventListener('change', function() {

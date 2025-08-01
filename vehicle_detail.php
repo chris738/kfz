@@ -2,6 +2,7 @@
 require 'auth.php';
 require_login();
 require 'db.php';
+require 'locale_de.php';
 
 // Get vehicle ID from URL
 $vehicle_id = $_GET['id'] ?? null;
@@ -26,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_mileage'])) {
         ->execute([
             $vehicle_id,
             $_POST['mileage'],
-            $_POST['date_recorded'],
+            parse_german_date($_POST['date_recorded']),
             $_POST['notes'] ?? ''
         ]);
     header("Location: vehicle_detail.php?id=" . $vehicle_id);
@@ -98,8 +99,8 @@ if (!empty($mileage_records)) {
                             <input type="number" name="mileage" id="mileage" class="form-control" required>
                         </div>
                         <div class="mb-3">
-                            <label for="date_recorded" class="form-label">Datum</label>
-                            <input type="date" name="date_recorded" id="date_recorded" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                            <label for="date_recorded" class="form-label">Datum (dd.mm.yyyy)</label>
+                            <input type="text" name="date_recorded" id="date_recorded" class="form-control" value="<?= current_german_date() ?>" placeholder="dd.mm.yyyy" pattern="\d{1,2}\.\d{1,2}\.\d{4}" required>
                         </div>
                         <div class="mb-3">
                             <label for="notes" class="form-label">Notizen (optional)</label>

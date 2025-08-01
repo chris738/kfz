@@ -2,6 +2,7 @@
 require 'auth.php';
 require_login();
 require 'db.php';
+require 'locale_de.php';
 
 // Get vehicle ID from URL
 $vehicle_id = $_GET['id'] ?? null;
@@ -26,12 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_maintenance'])) {
         ->execute([
             $vehicle_id,
             $_POST['maintenance_type'],
-            $_POST['date_performed'],
+            parse_german_date($_POST['date_performed']),
             !empty($_POST['mileage']) ? $_POST['mileage'] : null,
-            $_POST['cost'],
+            parse_german_number($_POST['cost']),
             $_POST['description'] ?? '',
             !empty($_POST['next_maintenance_km']) ? $_POST['next_maintenance_km'] : null,
-            !empty($_POST['next_maintenance_date']) ? $_POST['next_maintenance_date'] : null
+            !empty($_POST['next_maintenance_date']) ? parse_german_date($_POST['next_maintenance_date']) : null
         ]);
     header("Location: maintenance.php?id=" . $vehicle_id);
     exit();
@@ -189,8 +190,8 @@ $maintenance_types = [
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <label for="date_performed" class="form-label">Datum</label>
-                            <input type="date" name="date_performed" id="date_performed" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                            <label for="date_performed" class="form-label">Datum (dd.mm.yyyy)</label>
+                            <input type="text" name="date_performed" id="date_performed" class="form-control" value="<?= current_german_date() ?>" placeholder="dd.mm.yyyy" pattern="\d{1,2}\.\d{1,2}\.\d{4}" required>
                         </div>
                         <div class="col-md-2">
                             <label for="mileage" class="form-label">Kilometerstand</label>
@@ -198,15 +199,15 @@ $maintenance_types = [
                         </div>
                         <div class="col-md-2">
                             <label for="cost" class="form-label">Kosten (€)</label>
-                            <input type="number" step="0.01" name="cost" id="cost" class="form-control" required>
+                            <input type="text" name="cost" id="cost" class="form-control" placeholder="125,50" title="Verwenden Sie Komma als Dezimaltrennzeichen (z.B. 125,50)" required>
                         </div>
                         <div class="col-md-3">
                             <label for="description" class="form-label">Beschreibung</label>
                             <input type="text" name="description" id="description" class="form-control">
                         </div>
                         <div class="col-md-3">
-                            <label for="next_maintenance_date" class="form-label">Nächste Wartung (Datum)</label>
-                            <input type="date" name="next_maintenance_date" id="next_maintenance_date" class="form-control">
+                            <label for="next_maintenance_date" class="form-label">Nächste Wartung (dd.mm.yyyy)</label>
+                            <input type="text" name="next_maintenance_date" id="next_maintenance_date" class="form-control" placeholder="dd.mm.yyyy" pattern="\d{1,2}\.\d{1,2}\.\d{4}">
                         </div>
                         <div class="col-md-3">
                             <label for="next_maintenance_km" class="form-label">Nächste Wartung (KM)</label>

@@ -185,7 +185,7 @@ function runDatabaseMigrations($db) {
         }
         
         if (!$hasFuelType) {
-            $db->exec("ALTER TABLE fuel_records ADD COLUMN fuel_type TEXT DEFAULT 'Benzin' CHECK(fuel_type IN ('Benzin', 'Diesel', 'LPG', 'CNG', 'Elektro', 'Hybrid'))");
+            $db->exec("ALTER TABLE fuel_records ADD COLUMN fuel_type TEXT DEFAULT 'Super'");
             error_log("KFZ Database: Added fuel_type column to fuel_records table");
         }
         
@@ -204,6 +204,99 @@ function runDatabaseMigrations($db) {
         if (!$hasCostPerKm) {
             $db->exec("ALTER TABLE fuel_records ADD COLUMN distance_driven INTEGER DEFAULT NULL");
             error_log("KFZ Database: Added distance_driven column to fuel_records table");
+        }
+        
+        // Add displayed_consumption column if it doesn't exist
+        $stmt = $db->query("PRAGMA table_info(fuel_records)");
+        $columns = $stmt->fetchAll();
+        $hasDisplayedConsumption = false;
+        
+        foreach ($columns as $column) {
+            if ($column['name'] === 'displayed_consumption') {
+                $hasDisplayedConsumption = true;
+                break;
+            }
+        }
+        
+        if (!$hasDisplayedConsumption) {
+            $db->exec("ALTER TABLE fuel_records ADD COLUMN displayed_consumption DECIMAL(4,1) DEFAULT NULL");
+            error_log("KFZ Database: Added displayed_consumption column to fuel_records table");
+        }
+        
+        // Add engine_runtime column if it doesn't exist
+        $stmt = $db->query("PRAGMA table_info(fuel_records)");
+        $columns = $stmt->fetchAll();
+        $hasEngineRuntime = false;
+        
+        foreach ($columns as $column) {
+            if ($column['name'] === 'engine_runtime') {
+                $hasEngineRuntime = true;
+                break;
+            }
+        }
+        
+        if (!$hasEngineRuntime) {
+            $db->exec("ALTER TABLE fuel_records ADD COLUMN engine_runtime INTEGER DEFAULT NULL");
+            error_log("KFZ Database: Added engine_runtime column to fuel_records table");
+        }
+        
+        // Remove CHECK constraint on fuel_type by recreating the table (SQLite limitation)
+        // First check if constraint exists
+        $schema = $db->query("SELECT sql FROM sqlite_master WHERE type='table' AND name='fuel_records'")->fetch();
+        if ($schema && strpos($schema['sql'], "CHECK(fuel_type IN ('Benzin'") !== false) {
+            error_log("KFZ Database: Removing fuel_type constraint and updating table structure");
+            
+            // Begin transaction
+            $db->beginTransaction();
+            
+            try {
+                // Create backup table with new structure
+                $db->exec("CREATE TABLE fuel_records_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    vehicle_id INTEGER NOT NULL,
+                    mileage INTEGER NOT NULL CHECK(mileage >= 0),
+                    date_recorded DATE NOT NULL,
+                    fuel_price_per_liter DECIMAL(5,3) NOT NULL CHECK(fuel_price_per_liter > 0),
+                    fuel_amount_liters DECIMAL(6,2) NOT NULL CHECK(fuel_amount_liters > 0),
+                    total_cost DECIMAL(8,2) GENERATED ALWAYS AS (fuel_price_per_liter * fuel_amount_liters) STORED,
+                    notes TEXT,
+                    fuel_type TEXT DEFAULT 'Super',
+                    distance_driven INTEGER DEFAULT NULL,
+                    displayed_consumption DECIMAL(4,1) DEFAULT NULL,
+                    engine_runtime INTEGER DEFAULT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+                )");
+                
+                // Copy data from old table to new table
+                $db->exec("INSERT INTO fuel_records_new (id, vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, notes, fuel_type, distance_driven, displayed_consumption, engine_runtime, created_at)
+                          SELECT id, vehicle_id, mileage, date_recorded, fuel_price_per_liter, fuel_amount_liters, notes, 
+                                 CASE fuel_type 
+                                   WHEN 'Benzin' THEN 'Super'
+                                   WHEN 'LPG' THEN 'Super'
+                                   WHEN 'CNG' THEN 'Super'
+                                   WHEN 'Elektro' THEN 'Super'
+                                   WHEN 'Hybrid' THEN 'Super'
+                                   ELSE fuel_type 
+                                 END, distance_driven, displayed_consumption, engine_runtime, created_at
+                          FROM fuel_records");
+                
+                // Drop old table
+                $db->exec("DROP TABLE fuel_records");
+                
+                // Rename new table
+                $db->exec("ALTER TABLE fuel_records_new RENAME TO fuel_records");
+                
+                // Recreate index
+                $db->exec("CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_records(vehicle_id, date_recorded)");
+                
+                $db->commit();
+                error_log("KFZ Database: Successfully updated fuel_records table structure");
+                
+            } catch (Exception $e) {
+                $db->rollBack();
+                error_log("KFZ Database: Failed to update table structure: " . $e->getMessage());
+            }
         }
         
     } catch (Exception $e) {

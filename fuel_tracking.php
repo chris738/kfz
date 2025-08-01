@@ -272,6 +272,7 @@ for ($i = 5; $i >= 0; $i--) {
     <title>Spritkosten - <?= htmlspecialchars($vehicle['marke'] . ' ' . $vehicle['modell']) ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/chart-fallback.js"></script>
     <script src="js/chart-config.js"></script>
 </head>
@@ -375,36 +376,141 @@ for ($i = 5; $i >= 0; $i--) {
     <!-- CSV Import -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card">
-                <div class="card-header">CSV Import</div>
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-arrow-up"></i> CSV Import
+                        <small class="ms-2">Importieren Sie Ihre Tankdaten aus einer CSV-Datei</small>
+                    </h5>
+                </div>
                 <div class="card-body">
                     <?php if ($import_message): ?>
-                        <div class="alert alert-success" role="alert">
-                            <?= htmlspecialchars($import_message) ?>
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <i class="bi bi-check-circle"></i> <?= htmlspecialchars($import_message) ?>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
                     <?php endif; ?>
                     <?php if ($import_error): ?>
-                        <div class="alert alert-danger" role="alert">
-                            <?= $import_error ?>
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i> <?= $import_error ?>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
                     <?php endif; ?>
                     
-                    <form method="post" enctype="multipart/form-data" class="row g-3">
+                    <form method="post" enctype="multipart/form-data" class="row g-3" id="csvImportForm">
                         <div class="col-md-8">
                             <div class="mb-3">
-                                <label for="csv_file" class="form-label">CSV-Datei auswählen</label>
-                                <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required>
+                                <label for="csv_file" class="form-label">
+                                    <i class="bi bi-file-earmark-text"></i> CSV-Datei auswählen
+                                </label>
+                                <div class="input-group">
+                                    <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv,.txt" required>
+                                    <button class="btn btn-outline-primary" type="button" id="csvFileButton">
+                                        <i class="bi bi-folder2-open"></i> Datei wählen
+                                    </button>
+                                </div>
+                                <div id="fileSelectedInfo" class="mt-2 text-success" style="display: none;">
+                                    <i class="bi bi-check-circle"></i> <span id="selectedFileName"></span>
+                                </div>
                             </div>
                             <div class="form-text">
-                                Format: <code>id;datum;kilometer;liter;preiprol</code><br>
-                                Datum-Formate: YYYY-MM-DD oder DD.MM.YYYY<br>
-                                Beispiel: <code>1;2024-01-15;15000;45.5;1.65</code>
+                                <strong>Format:</strong> <code>id;datum;kilometer;liter;preiprol</code><br>
+                                <strong>Datum-Formate:</strong> YYYY-MM-DD oder DD.MM.YYYY<br>
+                                <strong>Beispiel:</strong> <code>1;2024-01-15;15000;45.5;1.65</code><br>
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> 
+                                    Klicken Sie auf "Datei wählen" oder wählen Sie eine .csv-Datei direkt aus
+                                </small>
                             </div>
                         </div>
                         <div class="col-md-4 d-flex align-items-end">
-                            <button type="submit" name="import_csv" class="btn btn-secondary w-100">CSV importieren</button>
+                            <button type="submit" name="import_csv" class="btn btn-primary w-100" id="importButton" disabled>
+                                <i class="bi bi-upload"></i> CSV importieren
+                            </button>
                         </div>
                     </form>
+                    
+                    <script>
+                        // Enhanced CSV file input handling
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const csvFileInput = document.getElementById('csv_file');
+                            const csvFileButton = document.getElementById('csvFileButton');
+                            const fileSelectedInfo = document.getElementById('fileSelectedInfo');
+                            const selectedFileName = document.getElementById('selectedFileName');
+                            const importButton = document.getElementById('importButton');
+                            
+                            // Make the button trigger the file input
+                            csvFileButton.addEventListener('click', function() {
+                                csvFileInput.click();
+                            });
+                            
+                            // Handle file selection
+                            csvFileInput.addEventListener('change', function() {
+                                if (this.files && this.files.length > 0) {
+                                    const file = this.files[0];
+                                    selectedFileName.textContent = file.name;
+                                    fileSelectedInfo.style.display = 'block';
+                                    importButton.disabled = false;
+                                    
+                                    // Update button text
+                                    csvFileButton.innerHTML = '<i class="bi bi-check2"></i> Datei gewählt';
+                                    csvFileButton.classList.remove('btn-outline-primary');
+                                    csvFileButton.classList.add('btn-success');
+                                } else {
+                                    fileSelectedInfo.style.display = 'none';
+                                    importButton.disabled = true;
+                                    csvFileButton.innerHTML = '<i class="bi bi-folder2-open"></i> Datei wählen';
+                                    csvFileButton.classList.remove('btn-success');
+                                    csvFileButton.classList.add('btn-outline-primary');
+                                }
+                            });
+                            
+                            // Add drag and drop functionality
+                            const dropZone = document.getElementById('csvImportForm');
+                            
+                            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                                dropZone.addEventListener(eventName, preventDefaults, false);
+                            });
+                            
+                            function preventDefaults(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }
+                            
+                            ['dragenter', 'dragover'].forEach(eventName => {
+                                dropZone.addEventListener(eventName, highlight, false);
+                            });
+                            
+                            ['dragleave', 'drop'].forEach(eventName => {
+                                dropZone.addEventListener(eventName, unhighlight, false);
+                            });
+                            
+                            function highlight(e) {
+                                dropZone.classList.add('border-primary', 'border-2');
+                            }
+                            
+                            function unhighlight(e) {
+                                dropZone.classList.remove('border-primary', 'border-2');
+                            }
+                            
+                            dropZone.addEventListener('drop', handleDrop, false);
+                            
+                            function handleDrop(e) {
+                                const dt = e.dataTransfer;
+                                const files = dt.files;
+                                
+                                if (files.length > 0) {
+                                    const file = files[0];
+                                    if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+                                        csvFileInput.files = files;
+                                        csvFileInput.dispatchEvent(new Event('change'));
+                                    } else {
+                                        alert('Bitte wählen Sie eine CSV-Datei aus.');
+                                    }
+                                }
+                            }
+                        });
+                    </script>
                 </div>
             </div>
         </div>

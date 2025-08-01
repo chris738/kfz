@@ -163,4 +163,52 @@ ensureDatabaseWritable($dbPath);
 
 // Initialize database schema from SQL file
 initializeDatabaseFromSQL($db, $sqlInitFile);
+
+// Run database migrations
+runDatabaseMigrations($db);
+
+/**
+ * Run database migrations for new features
+ */
+function runDatabaseMigrations($db) {
+    try {
+        // Add fuel_type column if it doesn't exist
+        $stmt = $db->query("PRAGMA table_info(fuel_records)");
+        $columns = $stmt->fetchAll();
+        $hasFuelType = false;
+        
+        foreach ($columns as $column) {
+            if ($column['name'] === 'fuel_type') {
+                $hasFuelType = true;
+                break;
+            }
+        }
+        
+        if (!$hasFuelType) {
+            $db->exec("ALTER TABLE fuel_records ADD COLUMN fuel_type TEXT DEFAULT 'Benzin' CHECK(fuel_type IN ('Benzin', 'Diesel', 'LPG', 'CNG', 'Elektro', 'Hybrid'))");
+            error_log("KFZ Database: Added fuel_type column to fuel_records table");
+        }
+        
+        // Add cost_per_km calculated field support
+        $stmt = $db->query("PRAGMA table_info(fuel_records)");
+        $columns = $stmt->fetchAll();
+        $hasCostPerKm = false;
+        
+        foreach ($columns as $column) {
+            if ($column['name'] === 'distance_driven') {
+                $hasCostPerKm = true;
+                break;
+            }
+        }
+        
+        if (!$hasCostPerKm) {
+            $db->exec("ALTER TABLE fuel_records ADD COLUMN distance_driven INTEGER DEFAULT NULL");
+            error_log("KFZ Database: Added distance_driven column to fuel_records table");
+        }
+        
+    } catch (Exception $e) {
+        error_log("KFZ Database Migration Error: " . $e->getMessage());
+        // Don't throw, as migrations are not critical for basic functionality
+    }
+}
 ?>
